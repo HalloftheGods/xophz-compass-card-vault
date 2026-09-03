@@ -1,0 +1,839 @@
+[
+  {
+    "id": "sv3pt5-199",
+    "name": "Charizard ex",
+    "supertype": "Pokémon",
+    "subtypes": [
+      "Stage 2",
+      "ex",
+      "Tera"
+    ],
+    "hp": "330",
+    "types": [
+      "Darkness"
+    ],
+    "setName": "151",
+    "setCode": "sv3pt5",
+    "setSeries": "Scarlet & Violet",
+    "setReleaseYear": 2023,
+    "number": "199",
+    "totalSetNumber": "165",
+    "rarity": "Special Illustration Rare",
+    "artist": "AKIRA EGAWA",
+    "imageUrl": "https://images.pokemontcg.io/sv3pt5/199_hires.png",
+    "smallImageUrl": "https://images.pokemontcg.io/sv3pt5/199.png",
+    "pricing": {
+      "rawMarketPrice": 128.5,
+      "rawLowPrice": 110,
+      "rawMidPrice": 130,
+      "rawHighPrice": 165,
+      "psa9Price": 155,
+      "psa10Price": 385,
+      "thirtyDayTrendPercent": 4.8,
+      "lastUpdated": "2026-08-31",
+      "source": "TCGPlayer / PriceCharting"
+    }
+  },
+  {
+    "id": "sv3pt5-151",
+    "name": "Mew ex",
+    "supertype": "Pokémon",
+    "subtypes": [
+      "Basic",
+      "ex"
+    ],
+    "hp": "180",
+    "types": [
+      "Psychic"
+    ],
+    "setName": "151",
+    "setCode": "sv3pt5",
+    "setSeries": "Scarlet & Violet",
+    "setReleaseYear": 2023,
+    "number": "151",
+    "totalSetNumber": "165",
+    "rarity": "Ultra Rare",
+    "artist": "PLANETA Mochizuki",
+    "imageUrl": "https://images.pokemontcg.io/sv3pt5/151_hires.png",
+    "smallImageUrl": "https://images.pokemontcg.io/sv3pt5/151.png",
+    "pricing": {
+      "rawMarketPrice": 24.5,
+      "rawLowPrice": 19,
+      "rawMidPrice": 25,
+      "rawHighPrice": 32,
+      "psa9Price": 38,
+      "psa10Price": 95,
+      "thirtyDayTrendPercent": -1.2,
+      "lastUpdated": "2026-08-31",
+      "source": "TCGPlayer / PriceCharting"
+    }
+  },
+  {
+    "id": "sv3pt5-205",
+    "name": "Mew ex (Metal Card)",
+    "supertype": "Pokémon",
+    "subtypes": [
+      "Basic",
+      "ex"
+    ],
+    "hp": "180",
+    "types": [
+      "Psychic"
+    ],
+    "setName": "151 Promos",
+    "setCode": "svp",
+    "setSeries": "Scarlet & Violet",
+    "setReleaseYear": 2023,
+    "number": "053",
+    "totalSetNumber": "SVP",
+    "rarity": "Promo",
+    "artist": "USGMEN",
+    "imageUrl": "https://images.pokemontcg.io/svp/53_hires.png",
+    "smallImageUrl": "https://images.pokemontcg.io/svp/53.png",
+    "pricing": {
+      "rawMarketPrice": 88,
+      "rawLowPrice": 75,
+      "rawMidPrice": 90,
+      "rawHighPrice": 110,
+      "psa9Price": 120,
+      "psa10Price": 290,
+      "thirtyDayTrendPercent": 2.1,
+      "lastUpdated": "2026-08-31",
+      "source": "TCGPlayer / PriceCharting"
+    }
+  },
+  {
+    "id": "sv3pt5-183",
+    "name": "Pikachu",
+    "supertype": "Pokémon",
+    "subtypes": [
+      "Basic"
+    ],
+    "hp": "60",
+    "types": [
+      "Lightning"
+    ],
+    "setName": "151",
+    "setCode": "sv3pt5",
+    "setSeries": "Scarlet & Violet",
+    "setReleaseYear": 2023,
+    "number": "173",
+    "totalSetNumber": "165",
+    "rarity": "Illustration Rare",
+    "artist": "Hiroyuki Yamamoto",
+    "imageUrl": "https://images.pokemontcg.io/sv3pt5/173_hires.png",
+    "smallImageUrl": "https://images.pokemontcg.io/sv3pt5/173.png",
+    "pricing": {
+      "rawMarketPrice": 29.8,
+      "rawLowPrice": 24,
+      "rawMidPrice": 30,
+      "rawHighPrice": 38,
+      "psa9Price": 42,
+      "psa10Price": 125,
+      "thirtyDayTrendPercent": 3.5,
+      "lastUpdated": "2026-08-31",
+      "source": "TCGPlayer / PriceCharting"
+    }
+  },
+  {
+    "id": "sv3pt5-198",
+    "name": "Venusaur ex",
+    "supertype": "Pokémon",
+    "subtypes": [
+      "Stage 2",
+      "ex"
+    ],
+    "hp": "340",
+    "types": [
+      "Grass"
+    ],
+    "setName": "151",
+    "setCode": "sv3pt5",
+    "setSeries": "Scarlet & Violet",
+    "setReleaseYear": 2023,
+    "number": "198",
+    "totalSetNumber": "165",
+    "rarity": "Special Illustration Rare",
+    "artist": "Yuu Nishida",
+    "imageUrl": "https://images.pokemontcg.io/sv3pt5/198_hires.png",
+    "smallImageUrl": "https://images.pokemontcg.io/sv3pt5/198.png",
+    "pricing": {
+      "rawMarketPrice": 46.5,
+      "rawLowPrice": 38,
+      "rawMidPrice": 48,
+      "rawHighPrice": 60,
+      "psa9Price": 58,
+      "psa10Price": 160,
+      "thirtyDayTrendPercent": 1.8,
+      "lastUpdated": "2026-08-31",
+      "source": "TCGPlayer / PriceCharting"
+    }
+  },
+  {
+    "id": "sv3pt5-200",
+    "name": "Blastoise ex",
+    "supertype": "Pokémon",
+    "subtypes": [
+      "Stage 2",
+      "ex"
+    ],
+    "hp": "330",
+    "types": [
+      "Water"
+    ],
+    "setName": "151",
+    "setCode": "sv3pt5",
+    "setSeries": "Scarlet & Violet",
+    "setReleaseYear": 2023,
+    "number": "200",
+    "totalSetNumber": "165",
+    "rarity": "Special Illustration Rare",
+    "artist": "Mitsuhiro Arita",
+    "imageUrl": "https://images.pokemontcg.io/sv3pt5/200_hires.png",
+    "smallImageUrl": "https://images.pokemontcg.io/sv3pt5/200.png",
+    "pricing": {
+      "rawMarketPrice": 52,
+      "rawLowPrice": 44,
+      "rawMidPrice": 54,
+      "rawHighPrice": 68,
+      "psa9Price": 65,
+      "psa10Price": 185,
+      "thirtyDayTrendPercent": 6.2,
+      "lastUpdated": "2026-08-31",
+      "source": "TCGPlayer / PriceCharting"
+    }
+  },
+  {
+    "id": "sv3pt5-202",
+    "name": "Zapdos ex",
+    "supertype": "Pokémon",
+    "subtypes": [
+      "Basic",
+      "ex"
+    ],
+    "hp": "200",
+    "types": [
+      "Lightning"
+    ],
+    "setName": "151",
+    "setCode": "sv3pt5",
+    "setSeries": "Scarlet & Violet",
+    "setReleaseYear": 2023,
+    "number": "202",
+    "totalSetNumber": "165",
+    "rarity": "Special Illustration Rare",
+    "artist": "Shinji Kanda",
+    "imageUrl": "https://images.pokemontcg.io/sv3pt5/202_hires.png",
+    "smallImageUrl": "https://images.pokemontcg.io/sv3pt5/202.png",
+    "pricing": {
+      "rawMarketPrice": 39.5,
+      "rawLowPrice": 32,
+      "rawMidPrice": 40,
+      "rawHighPrice": 50,
+      "psa9Price": 48,
+      "psa10Price": 140,
+      "thirtyDayTrendPercent": 2.4,
+      "lastUpdated": "2026-08-31",
+      "source": "TCGPlayer / PriceCharting"
+    }
+  },
+  {
+    "id": "sv3pt5-204",
+    "name": "Erika's Invitation",
+    "supertype": "Trainer",
+    "subtypes": [
+      "Supporter"
+    ],
+    "setName": "151",
+    "setCode": "sv3pt5",
+    "setSeries": "Scarlet & Violet",
+    "setReleaseYear": 2023,
+    "number": "203",
+    "totalSetNumber": "165",
+    "rarity": "Special Illustration Rare",
+    "artist": "Cona Nitanda",
+    "imageUrl": "https://images.pokemontcg.io/sv3pt5/203_hires.png",
+    "smallImageUrl": "https://images.pokemontcg.io/sv3pt5/203.png",
+    "pricing": {
+      "rawMarketPrice": 26,
+      "rawLowPrice": 20,
+      "rawMidPrice": 27,
+      "rawHighPrice": 35,
+      "psa9Price": 34,
+      "psa10Price": 92,
+      "thirtyDayTrendPercent": -0.8,
+      "lastUpdated": "2026-08-31",
+      "source": "TCGPlayer / PriceCharting"
+    }
+  },
+  {
+    "id": "swsh7-215",
+    "name": "Umbreon VMAX (Moonbreon)",
+    "supertype": "Pokémon",
+    "subtypes": [
+      "VMAX",
+      "Single Strike"
+    ],
+    "hp": "310",
+    "types": [
+      "Darkness"
+    ],
+    "setName": "Evolving Skies",
+    "setCode": "swsh7",
+    "setSeries": "Sword & Shield",
+    "setReleaseYear": 2021,
+    "number": "215",
+    "totalSetNumber": "203",
+    "rarity": "Secret Rare",
+    "artist": "KEIICHIRO ITO",
+    "imageUrl": "https://images.pokemontcg.io/swsh7/215_hires.png",
+    "smallImageUrl": "https://images.pokemontcg.io/swsh7/215.png",
+    "pricing": {
+      "rawMarketPrice": 890,
+      "rawLowPrice": 780,
+      "rawMidPrice": 910,
+      "rawHighPrice": 1050,
+      "psa9Price": 920,
+      "psa10Price": 1550,
+      "thirtyDayTrendPercent": 8.4,
+      "lastUpdated": "2026-08-31",
+      "source": "TCGPlayer / PriceCharting"
+    }
+  },
+  {
+    "id": "swsh7-218",
+    "name": "Rayquaza VMAX",
+    "supertype": "Pokémon",
+    "subtypes": [
+      "VMAX",
+      "Rapid Strike"
+    ],
+    "hp": "320",
+    "types": [
+      "Dragon"
+    ],
+    "setName": "Evolving Skies",
+    "setCode": "swsh7",
+    "setSeries": "Sword & Shield",
+    "setReleaseYear": 2021,
+    "number": "218",
+    "totalSetNumber": "203",
+    "rarity": "Secret Rare",
+    "artist": "Anesaki Dynamic",
+    "imageUrl": "https://images.pokemontcg.io/swsh7/218_hires.png",
+    "smallImageUrl": "https://images.pokemontcg.io/swsh7/218.png",
+    "pricing": {
+      "rawMarketPrice": 380,
+      "rawLowPrice": 320,
+      "rawMidPrice": 390,
+      "rawHighPrice": 460,
+      "psa9Price": 410,
+      "psa10Price": 750,
+      "thirtyDayTrendPercent": 3.2,
+      "lastUpdated": "2026-08-31",
+      "source": "TCGPlayer / PriceCharting"
+    }
+  },
+  {
+    "id": "swsh7-212",
+    "name": "Gengar VMAX",
+    "supertype": "Pokémon",
+    "subtypes": [
+      "VMAX",
+      "Single Strike"
+    ],
+    "hp": "320",
+    "types": [
+      "Darkness"
+    ],
+    "setName": "Fusion Strike",
+    "setCode": "swsh8",
+    "setSeries": "Sword & Shield",
+    "setReleaseYear": 2021,
+    "number": "271",
+    "totalSetNumber": "264",
+    "rarity": "Secret Rare",
+    "artist": "sowsow",
+    "imageUrl": "https://images.pokemontcg.io/swsh8/271_hires.png",
+    "smallImageUrl": "https://images.pokemontcg.io/swsh8/271.png",
+    "pricing": {
+      "rawMarketPrice": 340,
+      "rawLowPrice": 295,
+      "rawMidPrice": 345,
+      "rawHighPrice": 410,
+      "psa9Price": 375,
+      "psa10Price": 680,
+      "thirtyDayTrendPercent": 5.1,
+      "lastUpdated": "2026-08-31",
+      "source": "TCGPlayer / PriceCharting"
+    }
+  },
+  {
+    "id": "swsh12pt5-gg70",
+    "name": "Giratina VSTAR",
+    "supertype": "Pokémon",
+    "subtypes": [
+      "VSTAR"
+    ],
+    "hp": "280",
+    "types": [
+      "Dragon"
+    ],
+    "setName": "Crown Zenith",
+    "setCode": "swsh12pt5",
+    "setSeries": "Sword & Shield",
+    "setReleaseYear": 2023,
+    "number": "GG69",
+    "totalSetNumber": "GG70",
+    "rarity": "Secret Rare",
+    "artist": "Akira Egawa",
+    "imageUrl": "https://images.pokemontcg.io/swsh12pt5/GG69_hires.png",
+    "smallImageUrl": "https://images.pokemontcg.io/swsh12pt5/GG69.png",
+    "pricing": {
+      "rawMarketPrice": 145,
+      "rawLowPrice": 125,
+      "rawMidPrice": 148,
+      "rawHighPrice": 175,
+      "psa9Price": 160,
+      "psa10Price": 320,
+      "thirtyDayTrendPercent": 7,
+      "lastUpdated": "2026-08-31",
+      "source": "TCGPlayer / PriceCharting"
+    }
+  },
+  {
+    "id": "base1-4",
+    "name": "Charizard (Shadowless / Unlimited)",
+    "supertype": "Pokémon",
+    "subtypes": [
+      "Stage 2"
+    ],
+    "hp": "120",
+    "types": [
+      "Fire"
+    ],
+    "setName": "Base Set",
+    "setCode": "base1",
+    "setSeries": "Base",
+    "setReleaseYear": 1999,
+    "number": "4",
+    "totalSetNumber": "102",
+    "rarity": "Holo Rare",
+    "artist": "Mitsuhiro Arita",
+    "imageUrl": "https://images.pokemontcg.io/base1/4_hires.png",
+    "smallImageUrl": "https://images.pokemontcg.io/base1/4.png",
+    "pricing": {
+      "rawMarketPrice": 360,
+      "rawLowPrice": 250,
+      "rawMidPrice": 375,
+      "rawHighPrice": 550,
+      "psa9Price": 1450,
+      "psa10Price": 12500,
+      "thirtyDayTrendPercent": 1.4,
+      "lastUpdated": "2026-08-31",
+      "source": "TCGPlayer / PriceCharting"
+    }
+  },
+  {
+    "id": "base1-2",
+    "name": "Blastoise",
+    "supertype": "Pokémon",
+    "subtypes": [
+      "Stage 2"
+    ],
+    "hp": "100",
+    "types": [
+      "Water"
+    ],
+    "setName": "Base Set",
+    "setCode": "base1",
+    "setSeries": "Base",
+    "setReleaseYear": 1999,
+    "number": "2",
+    "totalSetNumber": "102",
+    "rarity": "Holo Rare",
+    "artist": "Ken Sugimori",
+    "imageUrl": "https://images.pokemontcg.io/base1/2_hires.png",
+    "smallImageUrl": "https://images.pokemontcg.io/base1/2.png",
+    "pricing": {
+      "rawMarketPrice": 110,
+      "rawLowPrice": 75,
+      "rawMidPrice": 115,
+      "rawHighPrice": 180,
+      "psa9Price": 420,
+      "psa10Price": 2800,
+      "thirtyDayTrendPercent": 0.5,
+      "lastUpdated": "2026-08-31",
+      "source": "TCGPlayer / PriceCharting"
+    }
+  },
+  {
+    "id": "base1-15",
+    "name": "Venusaur",
+    "supertype": "Pokémon",
+    "subtypes": [
+      "Stage 2"
+    ],
+    "hp": "100",
+    "types": [
+      "Grass"
+    ],
+    "setName": "Base Set",
+    "setCode": "base1",
+    "setSeries": "Base",
+    "setReleaseYear": 1999,
+    "number": "15",
+    "totalSetNumber": "102",
+    "rarity": "Holo Rare",
+    "artist": "Mitsuhiro Arita",
+    "imageUrl": "https://images.pokemontcg.io/base1/15_hires.png",
+    "smallImageUrl": "https://images.pokemontcg.io/base1/15.png",
+    "pricing": {
+      "rawMarketPrice": 85,
+      "rawLowPrice": 60,
+      "rawMidPrice": 90,
+      "rawHighPrice": 135,
+      "psa9Price": 320,
+      "psa10Price": 2100,
+      "thirtyDayTrendPercent": -0.4,
+      "lastUpdated": "2026-08-31",
+      "source": "TCGPlayer / PriceCharting"
+    }
+  },
+  {
+    "id": "base1-58",
+    "name": "Pikachu (Red Cheeks / Yellow Cheeks)",
+    "supertype": "Pokémon",
+    "subtypes": [
+      "Basic"
+    ],
+    "hp": "40",
+    "types": [
+      "Lightning"
+    ],
+    "setName": "Base Set",
+    "setCode": "base1",
+    "setSeries": "Base",
+    "setReleaseYear": 1999,
+    "number": "58",
+    "totalSetNumber": "102",
+    "rarity": "Common",
+    "artist": "Mitsuhiro Arita",
+    "imageUrl": "https://images.pokemontcg.io/base1/58_hires.png",
+    "smallImageUrl": "https://images.pokemontcg.io/base1/58.png",
+    "pricing": {
+      "rawMarketPrice": 28,
+      "rawLowPrice": 18,
+      "rawMidPrice": 30,
+      "rawHighPrice": 48,
+      "psa9Price": 130,
+      "psa10Price": 750,
+      "thirtyDayTrendPercent": 3.8,
+      "lastUpdated": "2026-08-31",
+      "source": "TCGPlayer / PriceCharting"
+    }
+  },
+  {
+    "id": "neo1-9",
+    "name": "Lugia",
+    "supertype": "Pokémon",
+    "subtypes": [
+      "Basic"
+    ],
+    "hp": "90",
+    "types": [
+      "Colorless"
+    ],
+    "setName": "Neo Genesis",
+    "setCode": "neo1",
+    "setSeries": "Neo",
+    "setReleaseYear": 2000,
+    "number": "9",
+    "totalSetNumber": "111",
+    "rarity": "Holo Rare",
+    "artist": "Hironobu Yoshida",
+    "imageUrl": "https://images.pokemontcg.io/neo1/9_hires.png",
+    "smallImageUrl": "https://images.pokemontcg.io/neo1/9.png",
+    "pricing": {
+      "rawMarketPrice": 260,
+      "rawLowPrice": 180,
+      "rawMidPrice": 270,
+      "rawHighPrice": 390,
+      "psa9Price": 850,
+      "psa10Price": 6200,
+      "thirtyDayTrendPercent": 4.2,
+      "lastUpdated": "2026-08-31",
+      "source": "TCGPlayer / PriceCharting"
+    }
+  },
+  {
+    "id": "sv2-269",
+    "name": "Iono",
+    "supertype": "Trainer",
+    "subtypes": [
+      "Supporter"
+    ],
+    "setName": "Paldea Evolved",
+    "setCode": "sv2",
+    "setSeries": "Scarlet & Violet",
+    "setReleaseYear": 2023,
+    "number": "269",
+    "totalSetNumber": "193",
+    "rarity": "Special Illustration Rare",
+    "artist": "kirisAki",
+    "imageUrl": "https://images.pokemontcg.io/sv2/269_hires.png",
+    "smallImageUrl": "https://images.pokemontcg.io/sv2/269.png",
+    "pricing": {
+      "rawMarketPrice": 74,
+      "rawLowPrice": 62,
+      "rawMidPrice": 75,
+      "rawHighPrice": 92,
+      "psa9Price": 88,
+      "psa10Price": 220,
+      "thirtyDayTrendPercent": -2.3,
+      "lastUpdated": "2026-08-31",
+      "source": "TCGPlayer / PriceCharting"
+    }
+  },
+  {
+    "id": "sv4pt5-234",
+    "name": "Charizard ex (Shiny Treasure / Paldean Fates)",
+    "supertype": "Pokémon",
+    "subtypes": [
+      "Stage 2",
+      "ex",
+      "Tera"
+    ],
+    "hp": "330",
+    "types": [
+      "Darkness"
+    ],
+    "setName": "Paldean Fates",
+    "setCode": "sv4pt5",
+    "setSeries": "Scarlet & Violet",
+    "setReleaseYear": 2024,
+    "number": "234",
+    "totalSetNumber": "091",
+    "rarity": "Special Illustration Rare",
+    "artist": "AKIRA EGAWA",
+    "imageUrl": "https://images.pokemontcg.io/sv4pt5/234_hires.png",
+    "smallImageUrl": "https://images.pokemontcg.io/sv4pt5/234.png",
+    "pricing": {
+      "rawMarketPrice": 118,
+      "rawLowPrice": 100,
+      "rawMidPrice": 120,
+      "rawHighPrice": 145,
+      "psa9Price": 135,
+      "psa10Price": 340,
+      "thirtyDayTrendPercent": 3.1,
+      "lastUpdated": "2026-08-31",
+      "source": "TCGPlayer / PriceCharting"
+    }
+  },
+  {
+    "id": "sv6-214",
+    "name": "Greninja ex",
+    "supertype": "Pokémon",
+    "subtypes": [
+      "Stage 2",
+      "ex",
+      "Tera"
+    ],
+    "hp": "300",
+    "types": [
+      "Fighting"
+    ],
+    "setName": "Twilight Masquerade",
+    "setCode": "sv6",
+    "setSeries": "Scarlet & Violet",
+    "setReleaseYear": 2024,
+    "number": "214",
+    "totalSetNumber": "167",
+    "rarity": "Special Illustration Rare",
+    "artist": "SIE NANAHARA",
+    "imageUrl": "https://images.pokemontcg.io/sv6/214_hires.png",
+    "smallImageUrl": "https://images.pokemontcg.io/sv6/214.png",
+    "pricing": {
+      "rawMarketPrice": 285,
+      "rawLowPrice": 240,
+      "rawMidPrice": 290,
+      "rawHighPrice": 350,
+      "psa9Price": 310,
+      "psa10Price": 620,
+      "thirtyDayTrendPercent": 12.5,
+      "lastUpdated": "2026-08-31",
+      "source": "TCGPlayer / PriceCharting"
+    }
+  },
+  {
+    "id": "sv7-171",
+    "name": "Terapagos ex",
+    "supertype": "Pokémon",
+    "subtypes": [
+      "Basic",
+      "ex",
+      "Tera",
+      "Stellar"
+    ],
+    "hp": "230",
+    "types": [
+      "Colorless"
+    ],
+    "setName": "Stellar Crown",
+    "setCode": "sv7",
+    "setSeries": "Scarlet & Violet",
+    "setReleaseYear": 2024,
+    "number": "170",
+    "totalSetNumber": "142",
+    "rarity": "Special Illustration Rare",
+    "artist": "5ban Graphics",
+    "imageUrl": "https://images.pokemontcg.io/sv7/170_hires.png",
+    "smallImageUrl": "https://images.pokemontcg.io/sv7/170.png",
+    "pricing": {
+      "rawMarketPrice": 94,
+      "rawLowPrice": 80,
+      "rawMidPrice": 96,
+      "rawHighPrice": 120,
+      "psa9Price": 110,
+      "psa10Price": 260,
+      "thirtyDayTrendPercent": 5.6,
+      "lastUpdated": "2026-08-31",
+      "source": "TCGPlayer / PriceCharting"
+    }
+  },
+  {
+    "id": "sv8-238",
+    "name": "Pikachu ex",
+    "supertype": "Pokémon",
+    "subtypes": [
+      "Basic",
+      "ex",
+      "Tera",
+      "Stellar"
+    ],
+    "hp": "200",
+    "types": [
+      "Lightning"
+    ],
+    "setName": "Surging Sparks",
+    "setCode": "sv8",
+    "setSeries": "Scarlet & Violet",
+    "setReleaseYear": 2024,
+    "number": "238",
+    "totalSetNumber": "191",
+    "rarity": "Special Illustration Rare",
+    "artist": "GIDORA",
+    "imageUrl": "https://images.pokemontcg.io/sv8/238_hires.png",
+    "smallImageUrl": "https://images.pokemontcg.io/sv8/238.png",
+    "pricing": {
+      "rawMarketPrice": 320,
+      "rawLowPrice": 275,
+      "rawMidPrice": 325,
+      "rawHighPrice": 390,
+      "psa9Price": 360,
+      "psa10Price": 780,
+      "thirtyDayTrendPercent": 14.8,
+      "lastUpdated": "2026-08-31",
+      "source": "TCGPlayer / PriceCharting"
+    }
+  },
+  {
+    "id": "sv8pt5-241",
+    "name": "Eevee (Prismatic Special Illustration)",
+    "supertype": "Pokémon",
+    "subtypes": [
+      "Basic"
+    ],
+    "hp": "70",
+    "types": [
+      "Colorless"
+    ],
+    "setName": "Prismatic Evolutions",
+    "setCode": "sv8pt5",
+    "setSeries": "Scarlet & Violet",
+    "setReleaseYear": 2025,
+    "number": "143",
+    "totalSetNumber": "135",
+    "rarity": "Special Illustration Rare",
+    "artist": "Atsushi Furusawa",
+    "imageUrl": "https://images.pokemontcg.io/sv3pt5/173_hires.png",
+    "smallImageUrl": "https://images.pokemontcg.io/sv3pt5/173.png",
+    "pricing": {
+      "rawMarketPrice": 180,
+      "rawLowPrice": 155,
+      "rawMidPrice": 185,
+      "rawHighPrice": 220,
+      "psa9Price": 210,
+      "psa10Price": 490,
+      "thirtyDayTrendPercent": 18.2,
+      "lastUpdated": "2026-08-31",
+      "source": "TCGPlayer / PriceCharting"
+    }
+  },
+  {
+    "id": "gym2-2",
+    "name": "Blaine's Charizard",
+    "supertype": "Pokémon",
+    "subtypes": [
+      "Stage 2"
+    ],
+    "hp": "100",
+    "types": [
+      "Fire"
+    ],
+    "setName": "Gym Challenge",
+    "setCode": "gym2",
+    "setSeries": "Gym",
+    "setReleaseYear": 2000,
+    "number": "2",
+    "totalSetNumber": "132",
+    "rarity": "Holo Rare",
+    "artist": "Ken Sugimori",
+    "imageUrl": "https://images.pokemontcg.io/gym2/2_hires.png",
+    "smallImageUrl": "https://images.pokemontcg.io/gym2/2.png",
+    "pricing": {
+      "rawMarketPrice": 235,
+      "rawLowPrice": 170,
+      "rawMidPrice": 240,
+      "rawHighPrice": 320,
+      "psa9Price": 720,
+      "psa10Price": 3800,
+      "thirtyDayTrendPercent": 2.7,
+      "lastUpdated": "2026-08-31",
+      "source": "TCGPlayer / PriceCharting"
+    }
+  },
+  {
+    "id": "teamrocket-4",
+    "name": "Dark Charizard (1st Edition / Unlimited)",
+    "supertype": "Pokémon",
+    "subtypes": [
+      "Stage 2"
+    ],
+    "hp": "80",
+    "types": [
+      "Fire"
+    ],
+    "setName": "Team Rocket",
+    "setCode": "base5",
+    "setSeries": "Team Rocket",
+    "setReleaseYear": 2000,
+    "number": "4",
+    "totalSetNumber": "82",
+    "rarity": "Holo Rare",
+    "artist": "Ken Sugimori",
+    "imageUrl": "https://images.pokemontcg.io/base5/4_hires.png",
+    "smallImageUrl": "https://images.pokemontcg.io/base5/4.png",
+    "pricing": {
+      "rawMarketPrice": 195,
+      "rawLowPrice": 140,
+      "rawMidPrice": 200,
+      "rawHighPrice": 280,
+      "psa9Price": 580,
+      "psa10Price": 2450,
+      "thirtyDayTrendPercent": 1.1,
+      "lastUpdated": "2026-08-31",
+      "source": "TCGPlayer / PriceCharting"
+    }
+  }
+]
