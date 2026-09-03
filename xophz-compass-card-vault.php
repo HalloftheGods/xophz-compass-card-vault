@@ -78,6 +78,48 @@ add_filter( 'xophz_get_spark_manifest', function( $manifest, $spark_id ) {
 	return $manifest;
 }, 10, 2 );
 
+// Register with Compass Universal Admin Route & Bridge
+add_action( 'xophz_compass_register_plugins', function() {
+	if ( ! class_exists( 'Xophz_Compass' ) ) {
+		return;
+	}
+
+	Xophz_Compass::register_admin_plugin( array(
+		'slug'        => 'card-vault',
+		'name'        => 'Card Vault',
+		'title'       => 'Card Vault',
+		'description' => 'Offline-first Trade Desk, Optical Grading, Consignment & WooCommerce Sync',
+		'icon'        => plugins_url( 'icon.svg', __FILE__ ),
+		'color'       => '#62c9ff',
+		'category'    => 'Command Deck',
+		'script_url'  => plugins_url( 'admin/js/card-vault-admin.js', __FILE__ ),
+		'version'     => XOPHZ_COMPASS_CARD_VAULT_VERSION,
+		'capability'  => 'manage_options',
+		'navigation'  => array(
+			array(
+				'path'  => '',
+				'title' => 'Dealer HQ',
+				'icon'  => 'fal fa-tachometer-alt',
+			),
+			array(
+				'path'  => 'consignors',
+				'title' => 'Consignors',
+				'icon'  => 'fal fa-users',
+			),
+			array(
+				'path'  => 'payouts',
+				'title' => 'Payouts Ledger',
+				'icon'  => 'fal fa-file-invoice-dollar',
+			),
+			array(
+				'path'  => 'settings',
+				'title' => 'Settings & Sync',
+				'icon'  => 'fal fa-sliders-h',
+			),
+		),
+	) );
+} );
+
 /**
  * Initialize Card Vault components and hooks.
  */
@@ -108,8 +150,16 @@ add_action( 'plugins_loaded', 'xophz_compass_card_vault_init' );
  * @return array
  */
 function xophz_compass_card_vault_action_links( $links ) {
+	foreach ( $links as $link ) {
+		if ( stripos( $link, '>Settings<' ) !== false ) {
+			return $links;
+		}
+	}
 	$settings_link = '<a href="options-general.php?page=xophz-compass-card-vault">' . esc_html__( 'Settings', 'xophz-compass-card-vault' ) . '</a>';
-	array_unshift( $links, $settings_link );
-	return $links;
+	$new_links     = array( 'settings' => $settings_link );
+	foreach ( $links as $key => $value ) {
+		$new_links[ $key ] = $value;
+	}
+	return $new_links;
 }
 add_filter( 'plugin_action_links_' . plugin_basename( __FILE__ ), 'xophz_compass_card_vault_action_links' );

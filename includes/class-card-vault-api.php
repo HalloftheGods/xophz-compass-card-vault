@@ -56,6 +56,40 @@ class Card_Vault_API {
 			'callback'            => array( $this, 'handle_consignor_dashboard' ),
 			'permission_callback' => array( $this, 'check_consignor_or_dealer_permission' ),
 		) );
+
+		// 6. Dealer Portal Aggregate Summary
+		register_rest_route( self::NAMESPACE, '/dealer/summary', array(
+			'methods'             => WP_REST_Server::READABLE,
+			'callback'            => array( $this, 'handle_dealer_summary' ),
+			'permission_callback' => array( $this, 'check_dealer_or_nonce_permission' ),
+		) );
+
+		// 7. Consignors List & Creation
+		register_rest_route( self::NAMESPACE, '/consignors', array(
+			array(
+				'methods'             => WP_REST_Server::READABLE,
+				'callback'            => array( $this, 'handle_get_consignors' ),
+				'permission_callback' => array( $this, 'check_dealer_or_nonce_permission' ),
+			),
+			array(
+				'methods'             => WP_REST_Server::CREATABLE,
+				'callback'            => array( $this, 'handle_create_consignor' ),
+				'permission_callback' => array( $this, 'check_dealer_or_nonce_permission' ),
+			),
+		) );
+
+		// 8. Payouts Ledger & Settlement
+		register_rest_route( self::NAMESPACE, '/payouts', array(
+			'methods'             => WP_REST_Server::READABLE,
+			'callback'            => array( $this, 'handle_get_payouts' ),
+			'permission_callback' => array( $this, 'check_dealer_or_nonce_permission' ),
+		) );
+
+		register_rest_route( self::NAMESPACE, '/payouts/settle', array(
+			'methods'             => WP_REST_Server::CREATABLE,
+			'callback'            => array( $this, 'handle_settle_payout' ),
+			'permission_callback' => array( $this, 'check_dealer_or_nonce_permission' ),
+		) );
 	}
 
 	/**
@@ -370,5 +404,103 @@ class Card_Vault_API {
 			'activeInventory' => $inventory,
 			'sales'           => $payouts,
 		), 200 );
+	}
+
+	/**
+	 * Handle GET /dealer/summary.
+	 */
+	public function handle_dealer_summary( $request ) {
+		$summary = Card_Vault_Consignments::get_dealer_aggregate_summary();
+		return new WP_REST_Response( array(
+			'success' => true,
+			'data'    => $summary,
+		), 200 );
+	}
+
+	/**
+	 * Handle GET /consignors.
+	 */
+	public function handle_get_consignors( $request ) {
+		$status = $request->get_param( 'status' ) ?? '';
+		$search = $request->get_param( 'search' ) ?? '';
+		$limit  = (int) ( $request->get_param( 'limit' ) ?? 50 );
+
+		$consignors = Card_Vault_Consignments::get_consignors( array(
+			'status' => $status,
+			'search' => $search,
+			'limit'  => $limit,
+		) );
+
+		return new WP_REST_Response( array(
+			'success' => true,
+			'data'    => $consignors,
+		), 200 );
+	}
+
+	/**
+	 * Handle POST /consignors.
+	 */
+	public function handle_create_consignor( $request ) {
+		$params = $request->get_json_params();
+		$result = Card_Vault_Consignments::create_consignor( $params );
+
+		if ( is_wp_error( $result ) ) {
+			return new WP_REST_Response( array(
+				'success' => false,
+				'message' => $result->get_error_message(),
+			), 400 );
+		}
+
+		return new WP_REST_Response( array(
+			'success' => true,
+			'data'    => $result,
+		), 201 );
+	}
+
+	/**
+	 * Handle GET /payouts.
+	 */
+	public function handle_get_payouts( $request ) {
+		$status       = $request->get_param( 'payout_status' ) ?? '';
+		$consignor_id = $request->get_param( 'consignor_id' ) ?? '';
+		$limit        = (int) ( $request->get_param( 'limit' ) ?? 100 );
+
+		$args = array( 'limit' => $limit );
+		if ( ! empty( $status ) ) {
+			$args['payout_status'] = $status;
+		}
+		if ( ! empty( $consignor_id ) ) {
+			$args['consignor_id'] = $consignor_id;
+		}
+
+		$payouts = Card_Vault_Consignments::get_payouts( $args );
+
+		return new WP_REST_Response( array(
+			'success' => true,
+			'data'    => $payouts,
+		), 200 );
+	}
+
+	/**
+	 * Handle POST /payouts/settle.
+	 */
+	public function handle_settle_payout( $request ) {
+		$params            = $request->get_json_params();
+		$payout_id         = $params['payout_id'] ?? 0;
+		$payment_method    = $params['payment_method'] ?? 'Cash';
+		$payment_reference = $params['payment_reference'] ?? '';
+
+		if ( empty( $payout_id ) ) {
+			return new WP_REST_Response( array(
+				'success' => false,
+				'message' => 'Missing payout identifier.',
+			), 400 );
+		}
+
+		$success = Card_Vault_Consignments::mark_payout_paid( $payout_id, $payment_method, $payment_reference );
+
+		return new WP_REST_Response( array(
+			'success' => $success,
+		), $success ? 200 : 400 );
 	}
 }
