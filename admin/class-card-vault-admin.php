@@ -226,7 +226,7 @@ class Card_Vault_Admin {
 		if ( 'add_consignor' === $action ) {
 			check_admin_referer( 'cv_add_consignor_nonce' );
 
-			if ( ! current_user_can( 'manage_card_vault' ) && ! current_user_can( 'administrator' ) ) {
+			if ( ! current_user_can( 'manage_card_vault' ) && ! current_user_can( 'manage_options' ) ) {
 				wp_die( esc_html__( 'Permission denied.', 'xophz-compass-card-vault' ) );
 			}
 
@@ -256,7 +256,7 @@ class Card_Vault_Admin {
 		if ( 'mark_payout_paid' === $action ) {
 			check_admin_referer( 'cv_mark_paid_nonce' );
 
-			if ( ! current_user_can( 'manage_card_vault' ) && ! current_user_can( 'administrator' ) ) {
+			if ( ! current_user_can( 'manage_card_vault' ) && ! current_user_can( 'manage_options' ) ) {
 				wp_die( esc_html__( 'Permission denied.', 'xophz-compass-card-vault' ) );
 			}
 
@@ -286,7 +286,7 @@ class Card_Vault_Admin {
 	 */
 	public function render_portal_page() {
 		$current_user = wp_get_current_user();
-		$is_dealer    = current_user_can( 'manage_card_vault' ) || current_user_can( 'manage_woocommerce' ) || current_user_can( 'administrator' );
+		$is_dealer    = current_user_can( 'manage_card_vault' ) || current_user_can( 'manage_woocommerce' ) || current_user_can( 'manage_options' );
 		$is_consignor = current_user_can( 'view_consignor_dashboard' ) || in_array( 'card_vault_consignor', (array) $current_user->roles, true );
 
 		if ( $is_dealer ) {

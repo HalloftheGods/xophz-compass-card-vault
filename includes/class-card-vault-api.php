@@ -47,7 +47,7 @@ class Card_Vault_API {
 		register_rest_route( self::NAMESPACE, '/sync/delta', array(
 			'methods'             => WP_REST_Server::CREATABLE,
 			'callback'            => array( $this, 'handle_sync_delta' ),
-			'permission_callback' => array( $this, 'check_dealer_or_nonce_permission' ),
+			'permission_callback' => array( $this, 'check_dealer_permission' ),
 		) );
 
 		// 5. Scoped Consignor Dashboard Data
@@ -61,7 +61,7 @@ class Card_Vault_API {
 		register_rest_route( self::NAMESPACE, '/dealer/summary', array(
 			'methods'             => WP_REST_Server::READABLE,
 			'callback'            => array( $this, 'handle_dealer_summary' ),
-			'permission_callback' => array( $this, 'check_dealer_or_nonce_permission' ),
+			'permission_callback' => array( $this, 'check_dealer_permission' ),
 		) );
 
 		// 7. Consignors List & Creation
@@ -69,12 +69,12 @@ class Card_Vault_API {
 			array(
 				'methods'             => WP_REST_Server::READABLE,
 				'callback'            => array( $this, 'handle_get_consignors' ),
-				'permission_callback' => array( $this, 'check_dealer_or_nonce_permission' ),
+				'permission_callback' => array( $this, 'check_dealer_permission' ),
 			),
 			array(
 				'methods'             => WP_REST_Server::CREATABLE,
 				'callback'            => array( $this, 'handle_create_consignor' ),
-				'permission_callback' => array( $this, 'check_dealer_or_nonce_permission' ),
+				'permission_callback' => array( $this, 'check_dealer_permission' ),
 			),
 		) );
 
@@ -82,33 +82,23 @@ class Card_Vault_API {
 		register_rest_route( self::NAMESPACE, '/payouts', array(
 			'methods'             => WP_REST_Server::READABLE,
 			'callback'            => array( $this, 'handle_get_payouts' ),
-			'permission_callback' => array( $this, 'check_dealer_or_nonce_permission' ),
+			'permission_callback' => array( $this, 'check_dealer_permission' ),
 		) );
 
 		register_rest_route( self::NAMESPACE, '/payouts/settle', array(
 			'methods'             => WP_REST_Server::CREATABLE,
 			'callback'            => array( $this, 'handle_settle_payout' ),
-			'permission_callback' => array( $this, 'check_dealer_or_nonce_permission' ),
+			'permission_callback' => array( $this, 'check_dealer_permission' ),
 		) );
 	}
 
 	/**
-	 * Permission check for delta sync.
+	 * Permission check for dealer operations.
 	 *
-	 * @param WP_REST_Request $request Request.
 	 * @return bool
 	 */
-	public function check_dealer_or_nonce_permission( $request ) {
-		if ( current_user_can( 'manage_card_vault' ) || current_user_can( 'manage_woocommerce' ) || current_user_can( 'administrator' ) ) {
-			return true;
-		}
-
-		$nonce = $request->get_header( 'x-wp-nonce' );
-		if ( $nonce && wp_verify_nonce( $nonce, 'wp_rest' ) ) {
-			return true;
-		}
-
-		return false;
+	public function check_dealer_permission() {
+		return current_user_can( 'manage_card_vault' ) || current_user_can( 'manage_woocommerce' ) || current_user_can( 'manage_options' );
 	}
 
 	/**
@@ -118,19 +108,12 @@ class Card_Vault_API {
 	 * @return bool
 	 */
 	public function check_consignor_or_dealer_permission( $request ) {
-		if ( ! is_user_logged_in() ) {
-			$nonce = $request->get_header( 'x-wp-nonce' );
-			if ( ! $nonce || ! wp_verify_nonce( $nonce, 'wp_rest' ) ) {
-				return false;
-			}
-		}
-
 		$user = wp_get_current_user();
 		if ( ! $user || 0 === $user->ID ) {
 			return false;
 		}
 
-		if ( current_user_can( 'manage_card_vault' ) || current_user_can( 'administrator' ) || current_user_can( 'view_consignor_dashboard' ) ) {
+		if ( current_user_can( 'manage_card_vault' ) || current_user_can( 'manage_options' ) || current_user_can( 'view_consignor_dashboard' ) ) {
 			return true;
 		}
 
@@ -363,7 +346,7 @@ class Card_Vault_API {
 	 */
 	public function handle_consignor_dashboard( $request ) {
 		$user      = wp_get_current_user();
-		$is_dealer = current_user_can( 'manage_card_vault' ) || current_user_can( 'administrator' );
+		$is_dealer = current_user_can( 'manage_card_vault' ) || current_user_can( 'manage_woocommerce' ) || current_user_can( 'manage_options' );
 
 		$requested_id = $request->get_param( 'consignor_id' );
 
