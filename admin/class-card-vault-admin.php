@@ -58,6 +58,11 @@ class Card_Vault_Admin {
 		register_setting( 'xophz_compass_card_vault_options', 'xophz_compass_card_vault_trade_buyout_pct' );
 		register_setting( 'xophz_compass_card_vault_options', 'xophz_compass_card_vault_default_split_rate' );
 		register_setting( 'xophz_compass_card_vault_options', 'xophz_compass_card_vault_auto_sync_wc' );
+		register_setting( 'xophz_compass_card_vault_options', 'xophz_compass_card_vault_allow_community' );
+		register_setting( 'xophz_compass_card_vault_options', 'xophz_compass_card_vault_min_intake_value' );
+		register_setting( 'xophz_compass_card_vault_options', 'xophz_compass_card_vault_store_credit_bonus' );
+		register_setting( 'xophz_compass_card_vault_options', 'xophz_compass_card_vault_auto_approve_intake' );
+		register_setting( 'xophz_compass_card_vault_options', 'xophz_compass_card_vault_enable_showcases' );
 	}
 
 	/**
@@ -216,7 +221,25 @@ class Card_Vault_Admin {
 	 * Handle admin POST submissions (add consignor, mark payout paid).
 	 */
 	public function handle_form_submissions() {
-		if ( ! is_admin() || empty( $_POST['cv_admin_action'] ) ) {
+		if ( ! is_admin() ) {
+			return;
+		}
+
+		// Sync community options when settings page is saved
+		if ( isset( $_POST['option_page'] ) && 'xophz_compass_card_vault_options' === $_POST['option_page'] && check_admin_referer( 'xophz_compass_card_vault_options-options' ) ) {
+			if ( class_exists( 'Card_Vault_Community' ) ) {
+				Card_Vault_Community::update_settings( array(
+					'allow_community_vaults'     => ! empty( $_POST['xophz_compass_card_vault_allow_community'] ),
+					'min_consignment_card_value' => isset( $_POST['xophz_compass_card_vault_min_intake_value'] ) ? (float) $_POST['xophz_compass_card_vault_min_intake_value'] : 10.0,
+					'store_credit_bonus_percent' => isset( $_POST['xophz_compass_card_vault_store_credit_bonus'] ) ? (float) $_POST['xophz_compass_card_vault_store_credit_bonus'] : 15.0,
+					'auto_approve_intake'        => ! empty( $_POST['xophz_compass_card_vault_auto_approve_intake'] ),
+					'enable_public_showcases'    => ! empty( $_POST['xophz_compass_card_vault_enable_showcases'] ),
+				) );
+			}
+			return;
+		}
+
+		if ( empty( $_POST['cv_admin_action'] ) ) {
 			return;
 		}
 
@@ -414,6 +437,63 @@ class Card_Vault_Admin {
 								}
 								?>
 							</p>
+						</td>
+					</tr>
+					<?php
+					$comm_settings = class_exists( 'Card_Vault_Community' ) ? Card_Vault_Community::get_settings() : array();
+					$allow_comm = $comm_settings['allow_community_vaults'] ?? false;
+					$min_val = $comm_settings['min_consignment_card_value'] ?? 10.0;
+					$bonus_pct = $comm_settings['store_credit_bonus_percent'] ?? 15.0;
+					$auto_appr = $comm_settings['auto_approve_intake'] ?? false;
+					$enable_show = $comm_settings['enable_public_showcases'] ?? true;
+					?>
+					<tr valign="top">
+						<th scope="row" colspan="2" style="padding-top: 30px;">
+							<h3 style="margin: 0; color: #62c9ff; border-bottom: 1px solid #334155; padding-bottom: 8px;">
+								<?php esc_html_e( 'Community Vaults, Consignment Intake & Card Shows', 'xophz-compass-card-vault' ); ?>
+							</h3>
+						</th>
+					</tr>
+					<tr valign="top">
+						<th scope="row"><?php esc_html_e( 'Community Collector Vaults', 'xophz-compass-card-vault' ); ?></th>
+						<td>
+							<label>
+								<input type="checkbox" name="xophz_compass_card_vault_allow_community" value="1" <?php checked( true, $allow_comm ); ?> />
+								<?php esc_html_e( 'Allow community users to register, track personal card collections, and submit consignments.', 'xophz-compass-card-vault' ); ?>
+							</label>
+							<p class="description"><?php esc_html_e( 'Synchronizes with WordPress "Anyone can register" setting.', 'xophz-compass-card-vault' ); ?></p>
+						</td>
+					</tr>
+					<tr valign="top">
+						<th scope="row"><?php esc_html_e( 'Min Consignment Card Value ($)', 'xophz-compass-card-vault' ); ?></th>
+						<td>
+							<input type="number" step="1" name="xophz_compass_card_vault_min_intake_value" value="<?php echo esc_attr( $min_val ); ?>" min="0" class="small-text" /> $
+							<p class="description"><?php esc_html_e( 'Minimum market price comp for cards submitted for in-store consignment intake.', 'xophz-compass-card-vault' ); ?></p>
+						</td>
+					</tr>
+					<tr valign="top">
+						<th scope="row"><?php esc_html_e( 'Store Credit Trade-In Bonus (%)', 'xophz-compass-card-vault' ); ?></th>
+						<td>
+							<input type="number" step="0.5" name="xophz_compass_card_vault_store_credit_bonus" value="<?php echo esc_attr( $bonus_pct ); ?>" min="0" max="100" class="small-text" /> %
+							<p class="description"><?php esc_html_e( 'Additional bonus percentage awarded to consignors or traders when taking payout as store credit instead of cash (e.g. +15%).', 'xophz-compass-card-vault' ); ?></p>
+						</td>
+					</tr>
+					<tr valign="top">
+						<th scope="row"><?php esc_html_e( 'Auto-Approve Consignment Batches', 'xophz-compass-card-vault' ); ?></th>
+						<td>
+							<label>
+								<input type="checkbox" name="xophz_compass_card_vault_auto_approve_intake" value="1" <?php checked( true, $auto_appr ); ?> />
+								<?php esc_html_e( 'Automatically approve submissions upon drop-off without requiring manual optical inspection at Trade Desk.', 'xophz-compass-card-vault' ); ?>
+							</label>
+						</td>
+					</tr>
+					<tr valign="top">
+						<th scope="row"><?php esc_html_e( 'Card Show Mobile Showcases', 'xophz-compass-card-vault' ); ?></th>
+						<td>
+							<label>
+								<input type="checkbox" name="xophz_compass_card_vault_enable_showcases" value="1" <?php checked( true, $enable_show ); ?> />
+								<?php esc_html_e( 'Allow collectors to generate public QR code showcases and receive instant guest bids from vendors at card shows.', 'xophz-compass-card-vault' ); ?>
+							</label>
 						</td>
 					</tr>
 				</table>

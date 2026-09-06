@@ -75,19 +75,38 @@ class Card_Vault_Public {
 	 * @return array
 	 */
 	public function filter_api_settings( array $payload, string $slug ): array {
-		if ( 'card-vault' !== $slug || empty( $payload['userId'] ) ) {
+		if ( 'card-vault' !== $slug ) {
 			return $payload;
 		}
 
-		$user_id = (int) $payload['userId'];
+		$user_id = ! empty( $payload['userId'] ) ? (int) $payload['userId'] : get_current_user_id();
 		$u = wp_get_current_user();
-		$roles = (array) $u->roles;
+		$roles = $u && $u->ID ? (array) $u->roles : array();
 		$is_dealer = current_user_can( 'manage_options' ) || current_user_can( 'manage_card_vault' ) || in_array( 'shop_manager', $roles, true );
-		$consignor = class_exists( 'Card_Vault_Consignments' ) ? Card_Vault_Consignments::get_consignor_by_user_id( $user_id ) : null;
+		$consignor = class_exists( 'Card_Vault_Consignments' ) && $user_id ? Card_Vault_Consignments::get_consignor_by_user_id( $user_id ) : null;
 
-		if ( isset( $payload['currentUser'] ) && is_array( $payload['currentUser'] ) ) {
-			$payload['currentUser']['role']        = $is_dealer ? 'dealer' : ( in_array( 'card_vault_consignor', $roles, true ) ? 'consignor' : 'user' );
-			$payload['currentUser']['consignorId'] = $consignor ? $consignor['consignor_id'] : null;
+		$role = 'guest';
+		if ( $user_id > 0 ) {
+			if ( $is_dealer ) {
+				$role = 'dealer';
+			} elseif ( in_array( 'card_vault_consignor', $roles, true ) ) {
+				$role = 'consignor';
+			} else {
+				$role = 'collector';
+			}
+		}
+
+		if ( ! isset( $payload['currentUser'] ) || ! is_array( $payload['currentUser'] ) ) {
+			$payload['currentUser'] = array();
+		}
+
+		$payload['currentUser']['role']        = $role;
+		$payload['currentUser']['consignorId'] = $consignor ? $consignor['consignor_id'] : null;
+		$payload['currentUser']['userLogin']   = $u && $u->ID ? $u->user_login : '';
+		$payload['currentUser']['displayName'] = $u && $u->ID ? $u->display_name : '';
+
+		if ( class_exists( 'Card_Vault_Community' ) ) {
+			$payload['communitySettings'] = Card_Vault_Community::get_settings();
 		}
 
 		return $payload;

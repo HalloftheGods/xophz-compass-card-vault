@@ -90,6 +90,92 @@ class Card_Vault_API {
 			'callback'            => array( $this, 'handle_settle_payout' ),
 			'permission_callback' => array( $this, 'check_dealer_permission' ),
 		) );
+
+		// 9. Community Collector Collection
+		register_rest_route( self::NAMESPACE, '/collector/collection', array(
+			'methods'             => WP_REST_Server::READABLE,
+			'callback'            => array( $this, 'handle_get_collector_collection' ),
+			'permission_callback' => array( $this, 'check_authenticated_permission' ),
+		) );
+
+		register_rest_route( self::NAMESPACE, '/collector/collection/sync', array(
+			'methods'             => WP_REST_Server::CREATABLE,
+			'callback'            => array( $this, 'handle_sync_collector_collection' ),
+			'permission_callback' => array( $this, 'check_authenticated_permission' ),
+		) );
+
+		// 10. Consignment Intake Pipeline
+		register_rest_route( self::NAMESPACE, '/intake/submit', array(
+			'methods'             => WP_REST_Server::CREATABLE,
+			'callback'            => array( $this, 'handle_submit_intake' ),
+			'permission_callback' => array( $this, 'check_authenticated_permission' ),
+		) );
+
+		register_rest_route( self::NAMESPACE, '/intake/batches', array(
+			'methods'             => WP_REST_Server::READABLE,
+			'callback'            => array( $this, 'handle_get_intake_batches' ),
+			'permission_callback' => array( $this, 'check_authenticated_permission' ),
+		) );
+
+		register_rest_route( self::NAMESPACE, '/intake/appraise', array(
+			'methods'             => WP_REST_Server::CREATABLE,
+			'callback'            => array( $this, 'handle_appraise_intake' ),
+			'permission_callback' => array( $this, 'check_dealer_permission' ),
+		) );
+
+		register_rest_route( self::NAMESPACE, '/intake/accept', array(
+			'methods'             => WP_REST_Server::CREATABLE,
+			'callback'            => array( $this, 'handle_accept_intake' ),
+			'permission_callback' => array( $this, 'check_dealer_permission' ),
+		) );
+
+		// 11. Card Show Public Showcase & Vendor Bids
+		register_rest_route( self::NAMESPACE, '/showcase/(?P<slug>[a-zA-Z0-9_-]+)', array(
+			'methods'             => WP_REST_Server::READABLE,
+			'callback'            => array( $this, 'handle_get_showcase' ),
+			'permission_callback' => '__return_true',
+		) );
+
+		register_rest_route( self::NAMESPACE, '/showcase/(?P<slug>[a-zA-Z0-9_-]+)/bid', array(
+			'methods'             => WP_REST_Server::CREATABLE,
+			'callback'            => array( $this, 'handle_submit_show_bid' ),
+			'permission_callback' => '__return_true',
+		) );
+
+		register_rest_route( self::NAMESPACE, '/collector/bids', array(
+			'methods'             => WP_REST_Server::READABLE,
+			'callback'            => array( $this, 'handle_get_collector_bids' ),
+			'permission_callback' => array( $this, 'check_authenticated_permission' ),
+		) );
+
+		register_rest_route( self::NAMESPACE, '/collector/bids/(?P<id>\d+)/action', array(
+			'methods'             => WP_REST_Server::CREATABLE,
+			'callback'            => array( $this, 'handle_action_collector_bid' ),
+			'permission_callback' => array( $this, 'check_authenticated_permission' ),
+		) );
+
+		// 12. Community Settings
+		register_rest_route( self::NAMESPACE, '/settings/community', array(
+			array(
+				'methods'             => WP_REST_Server::READABLE,
+				'callback'            => array( $this, 'handle_get_community_settings' ),
+				'permission_callback' => '__return_true',
+			),
+			array(
+				'methods'             => WP_REST_Server::CREATABLE,
+				'callback'            => array( $this, 'handle_update_community_settings' ),
+				'permission_callback' => array( $this, 'check_dealer_permission' ),
+			),
+		) );
+	}
+
+	/**
+	 * Permission check for authenticated users.
+	 *
+	 * @return bool
+	 */
+	public function check_authenticated_permission() {
+		return is_user_logged_in() && get_current_user_id() > 0;
 	}
 
 	/**
@@ -485,5 +571,264 @@ class Card_Vault_API {
 		return new WP_REST_Response( array(
 			'success' => $success,
 		), $success ? 200 : 400 );
+	}
+
+	/**
+	 * Handle GET /collector/collection.
+	 */
+	public function handle_get_collector_collection( $request ) {
+		$user_id = get_current_user_id();
+		$items = Card_Vault_Community::get_collector_items( $user_id );
+
+		return new WP_REST_Response( array(
+			'success' => true,
+			'data'    => $items,
+			'meta'    => array(
+				'timestamp' => time(),
+				'version'   => defined( 'XOPHZ_COMPASS_CARD_VAULT_VERSION' ) ? XOPHZ_COMPASS_CARD_VAULT_VERSION : '1.0.0',
+			),
+		), 200 );
+	}
+
+	/**
+	 * Handle POST /collector/collection/sync.
+	 */
+	public function handle_sync_collector_collection( $request ) {
+		$user_id = get_current_user_id();
+		$params = $request->get_json_params();
+		$items = isset( $params['items'] ) && is_array( $params['items'] ) ? $params['items'] : array();
+
+		$success = Card_Vault_Community::sync_collector_items( $user_id, $items );
+
+		return new WP_REST_Response( array(
+			'success' => $success,
+			'meta'    => array(
+				'timestamp' => time(),
+				'count'     => count( $items ),
+			),
+		), $success ? 200 : 400 );
+	}
+
+	/**
+	 * Handle POST /intake/submit.
+	 */
+	public function handle_submit_intake( $request ) {
+		$user_id = get_current_user_id();
+		$params = $request->get_json_params();
+
+		$result = Card_Vault_Community::submit_intake_batch( $user_id, $params );
+		if ( is_wp_error( $result ) ) {
+			return new WP_REST_Response( array(
+				'success' => false,
+				'error'   => $result->get_error_message(),
+			), $result->get_error_data()['status'] ?? 400 );
+		}
+
+		return new WP_REST_Response( array(
+			'success' => true,
+			'data'    => $result,
+			'meta'    => array(
+				'timestamp' => time(),
+			),
+		), 201 );
+	}
+
+	/**
+	 * Handle GET /intake/batches.
+	 */
+	public function handle_get_intake_batches( $request ) {
+		$user_id = get_current_user_id();
+		$is_dealer = $this->check_dealer_permission();
+
+		$args = array();
+		// If not dealer, scope strictly to user's batches
+		if ( ! $is_dealer ) {
+			$args['wp_user_id'] = $user_id;
+		} elseif ( $request->get_param( 'collector_id' ) ) {
+			$args['wp_user_id'] = (int) $request->get_param( 'collector_id' );
+		}
+
+		if ( $request->get_param( 'status' ) ) {
+			$args['status'] = sanitize_text_field( $request->get_param( 'status' ) );
+		}
+
+		if ( $request->get_param( 'batch_code' ) ) {
+			$args['batch_code'] = sanitize_text_field( $request->get_param( 'batch_code' ) );
+		}
+
+		$batches = Card_Vault_Community::get_intake_batches( $args );
+
+		return new WP_REST_Response( array(
+			'success' => true,
+			'data'    => $batches,
+			'meta'    => array(
+				'timestamp' => time(),
+				'count'     => count( $batches ),
+			),
+		), 200 );
+	}
+
+	/**
+	 * Handle POST /intake/appraise.
+	 */
+	public function handle_appraise_intake( $request ) {
+		$params = $request->get_json_params();
+		$batch_id = isset( $params['batchId'] ) ? (int) $params['batchId'] : 0;
+
+		if ( ! $batch_id ) {
+			return new WP_REST_Response( array( 'success' => false, 'error' => 'Missing batchId.' ), 400 );
+		}
+
+		$result = Card_Vault_Community::appraise_intake_batch( $batch_id, $params );
+		if ( is_wp_error( $result ) ) {
+			return new WP_REST_Response( array(
+				'success' => false,
+				'error'   => $result->get_error_message(),
+			), $result->get_error_data()['status'] ?? 400 );
+		}
+
+		return new WP_REST_Response( array(
+			'success' => true,
+			'data'    => array( 'batchId' => $batch_id, 'appraised' => true ),
+		), 200 );
+	}
+
+	/**
+	 * Handle POST /intake/accept.
+	 */
+	public function handle_accept_intake( $request ) {
+		$params = $request->get_json_params();
+		$batch_id = isset( $params['batchId'] ) ? (int) $params['batchId'] : 0;
+
+		if ( ! $batch_id ) {
+			return new WP_REST_Response( array( 'success' => false, 'error' => 'Missing batchId.' ), 400 );
+		}
+
+		$result = Card_Vault_Community::accept_intake_batch( $batch_id );
+		if ( is_wp_error( $result ) ) {
+			return new WP_REST_Response( array(
+				'success' => false,
+				'error'   => $result->get_error_message(),
+			), $result->get_error_data()['status'] ?? 400 );
+		}
+
+		return new WP_REST_Response( array(
+			'success' => true,
+			'data'    => $result,
+		), 200 );
+	}
+
+	/**
+	 * Handle GET /showcase/:slug.
+	 */
+	public function handle_get_showcase( $request ) {
+		$slug = $request->get_param( 'slug' );
+		if ( empty( $slug ) ) {
+			return new WP_REST_Response( array( 'success' => false, 'error' => 'Showcase slug required.' ), 400 );
+		}
+
+		$data = Card_Vault_Community::get_public_showcase( $slug );
+		if ( is_wp_error( $data ) ) {
+			return new WP_REST_Response( array(
+				'success' => false,
+				'error'   => $data->get_error_message(),
+			), $data->get_error_data()['status'] ?? 404 );
+		}
+
+		return new WP_REST_Response( array(
+			'success' => true,
+			'data'    => $data,
+			'meta'    => array(
+				'timestamp' => time(),
+			),
+		), 200 );
+	}
+
+	/**
+	 * Handle POST /showcase/:slug/bid.
+	 */
+	public function handle_submit_show_bid( $request ) {
+		$slug = $request->get_param( 'slug' );
+		$params = $request->get_json_params();
+		$params['showcaseSlug'] = $slug;
+
+		$result = Card_Vault_Community::submit_show_bid( $params );
+		if ( is_wp_error( $result ) ) {
+			return new WP_REST_Response( array(
+				'success' => false,
+				'error'   => $result->get_error_message(),
+			), $result->get_error_data()['status'] ?? 400 );
+		}
+
+		return new WP_REST_Response( array(
+			'success' => true,
+			'data'    => $result,
+		), 201 );
+	}
+
+	/**
+	 * Handle GET /collector/bids.
+	 */
+	public function handle_get_collector_bids( $request ) {
+		$user_id = get_current_user_id();
+		$bids = Card_Vault_Community::get_bids_for_collector( $user_id );
+
+		return new WP_REST_Response( array(
+			'success' => true,
+			'data'    => $bids,
+			'meta'    => array(
+				'timestamp' => time(),
+				'count'     => count( $bids ),
+			),
+		), 200 );
+	}
+
+	/**
+	 * Handle POST /collector/bids/:id/action.
+	 */
+	public function handle_action_collector_bid( $request ) {
+		$user_id = get_current_user_id();
+		$bid_id = (int) $request->get_param( 'id' );
+		$params = $request->get_json_params();
+		$action = $params['action'] ?? '';
+		$counter_amount = isset( $params['counterAmount'] ) ? (float) $params['counterAmount'] : null;
+
+		$result = Card_Vault_Community::action_show_bid( $bid_id, $user_id, $action, $counter_amount );
+		if ( is_wp_error( $result ) ) {
+			return new WP_REST_Response( array(
+				'success' => false,
+				'error'   => $result->get_error_message(),
+			), $result->get_error_data()['status'] ?? 400 );
+		}
+
+		return new WP_REST_Response( array(
+			'success' => true,
+			'data'    => array( 'bidId' => $bid_id, 'action' => $action ),
+		), 200 );
+	}
+
+	/**
+	 * Handle GET /settings/community.
+	 */
+	public function handle_get_community_settings( $request ) {
+		$settings = Card_Vault_Community::get_settings();
+
+		return new WP_REST_Response( array(
+			'success' => true,
+			'data'    => $settings,
+		), 200 );
+	}
+
+	/**
+	 * Handle POST /settings/community.
+	 */
+	public function handle_update_community_settings( $request ) {
+		$params = $request->get_json_params();
+		$updated = Card_Vault_Community::update_settings( $params );
+
+		return new WP_REST_Response( array(
+			'success' => true,
+			'data'    => $updated,
+		), 200 );
 	}
 }

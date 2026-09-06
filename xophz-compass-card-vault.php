@@ -29,6 +29,7 @@ add_action( 'before_woocommerce_init', function() {
 // Core includes
 require_once XOPHZ_COMPASS_CARD_VAULT_PATH . 'includes/class-card-vault-activator.php';
 require_once XOPHZ_COMPASS_CARD_VAULT_PATH . 'includes/class-card-vault-consignments.php';
+require_once XOPHZ_COMPASS_CARD_VAULT_PATH . 'includes/class-card-vault-community.php';
 require_once XOPHZ_COMPASS_CARD_VAULT_PATH . 'includes/class-card-vault-wc-sync.php';
 require_once XOPHZ_COMPASS_CARD_VAULT_PATH . 'includes/class-card-vault-gemini.php';
 require_once XOPHZ_COMPASS_CARD_VAULT_PATH . 'includes/class-card-vault-api.php';
