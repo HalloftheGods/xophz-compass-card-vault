@@ -167,6 +167,51 @@ class Card_Vault_API {
 				'permission_callback' => array( $this, 'check_dealer_permission' ),
 			),
 		) );
+
+		// 13. POS Checkout & Stripe Connectors
+		register_rest_route( self::NAMESPACE, '/pos/config', array(
+			'methods'             => WP_REST_Server::READABLE,
+			'callback'            => array( $this, 'handle_get_pos_config' ),
+			'permission_callback' => '__return_true',
+		) );
+
+		register_rest_route( self::NAMESPACE, '/pos/checkout', array(
+			'methods'             => WP_REST_Server::CREATABLE,
+			'callback'            => array( $this, 'handle_pos_checkout' ),
+			'permission_callback' => '__return_true',
+		) );
+
+		register_rest_route( self::NAMESPACE, '/pos/verify-payment', array(
+			'methods'             => WP_REST_Server::CREATABLE,
+			'callback'            => array( $this, 'handle_pos_verify_payment' ),
+			'permission_callback' => '__return_true',
+		) );
+
+		// 14. Shop Products (Bazaar WooCommerce Parity)
+		register_rest_route( self::NAMESPACE, '/products', array(
+			array(
+				'methods'             => WP_REST_Server::READABLE,
+				'callback'            => array( $this, 'handle_get_products' ),
+				'permission_callback' => '__return_true',
+			),
+			array(
+				'methods'             => WP_REST_Server::CREATABLE,
+				'callback'            => array( $this, 'handle_save_product' ),
+				'permission_callback' => array( $this, 'check_dealer_permission' ),
+			),
+		) );
+
+		register_rest_route( self::NAMESPACE, '/products/stock', array(
+			'methods'             => WP_REST_Server::CREATABLE,
+			'callback'            => array( $this, 'handle_update_product_stock' ),
+			'permission_callback' => array( $this, 'check_dealer_permission' ),
+		) );
+
+		register_rest_route( self::NAMESPACE, '/products/lookup-barcode', array(
+			'methods'             => WP_REST_Server::CREATABLE,
+			'callback'            => array( $this, 'handle_lookup_barcode' ),
+			'permission_callback' => array( $this, 'check_dealer_permission' ),
+		) );
 	}
 
 	/**
@@ -829,6 +874,209 @@ class Card_Vault_API {
 		return new WP_REST_Response( array(
 			'success' => true,
 			'data'    => $updated,
+		), 200 );
+	}
+
+	/**
+	 * Handle GET /pos/config.
+	 */
+	public function handle_get_pos_config( $request ) {
+		$is_configured   = Card_Vault_Stripe::is_stripe_configured();
+		$publishable_key = Card_Vault_Stripe::get_publishable_key();
+		$currency_symbol = function_exists( 'get_woocommerce_currency_symbol' ) ? get_woocommerce_currency_symbol() : '$';
+
+		return new WP_REST_Response( array(
+			'success' => true,
+			'data'    => array(
+				'isStripeConfigured' => $is_configured,
+				'publishableKey'     => $publishable_key,
+				'currencySymbol'     => $currency_symbol,
+				'siteName'           => get_bloginfo( 'name' ),
+			),
+			'meta'    => array(
+				'timestamp' => time(),
+				'version'   => defined( 'XOPHZ_COMPASS_CARD_VAULT_VERSION' ) ? XOPHZ_COMPASS_CARD_VAULT_VERSION : '1.0.0',
+			),
+		), 200 );
+	}
+
+	/**
+	 * Handle POST /pos/checkout.
+	 */
+	public function handle_pos_checkout( $request ) {
+		$params = $request->get_json_params();
+		if ( empty( $params ) || ! is_array( $params ) ) {
+			return new WP_REST_Response( array(
+				'success' => false,
+				'error'   => 'Missing checkout payload.',
+			), 400 );
+		}
+
+		$result = Card_Vault_Stripe::create_pos_checkout( $params );
+		if ( is_wp_error( $result ) ) {
+			return new WP_REST_Response( array(
+				'success' => false,
+				'error'   => $result->get_error_message(),
+			), $result->get_error_data()['status'] ?? 400 );
+		}
+
+		return new WP_REST_Response( array(
+			'success' => true,
+			'data'    => $result,
+			'meta'    => array(
+				'timestamp' => time(),
+				'version'   => defined( 'XOPHZ_COMPASS_CARD_VAULT_VERSION' ) ? XOPHZ_COMPASS_CARD_VAULT_VERSION : '1.0.0',
+			),
+		), 201 );
+	}
+
+	/**
+	 * Handle POST /pos/verify-payment.
+	 */
+	public function handle_pos_verify_payment( $request ) {
+		$params     = $request->get_json_params();
+		$order_id   = isset( $params['orderId'] ) ? intval( $params['orderId'] ) : 0;
+		$session_id = isset( $params['sessionId'] ) ? sanitize_text_field( $params['sessionId'] ) : '';
+
+		if ( ! $order_id || empty( $session_id ) ) {
+			return new WP_REST_Response( array(
+				'success' => false,
+				'error'   => 'orderId and sessionId are required.',
+			), 400 );
+		}
+
+		$result = Card_Vault_Stripe::verify_payment( $order_id, $session_id );
+		if ( is_wp_error( $result ) ) {
+			return new WP_REST_Response( array(
+				'success' => false,
+				'error'   => $result->get_error_message(),
+			), $result->get_error_data()['status'] ?? 400 );
+		}
+
+		return new WP_REST_Response( array(
+			'success' => true,
+			'data'    => $result,
+			'meta'    => array(
+				'timestamp' => time(),
+			),
+		), 200 );
+	}
+
+	/**
+	 * Handle GET /products.
+	 */
+	public function handle_get_products( $request ) {
+		$args = array(
+			'page'     => $request->get_param( 'page' ) ?: 1,
+			'limit'    => $request->get_param( 'limit' ) ?: 24,
+			'search'   => $request->get_param( 'search' ) ?: '',
+			'category' => $request->get_param( 'category' ) ?: '',
+			'status'   => $request->get_param( 'status' ) ?: '',
+		);
+
+		$data = Card_Vault_Products::get_products( $args );
+
+		return new WP_REST_Response( array(
+			'success' => true,
+			'data'    => $data['products'],
+			'total'   => $data['total'],
+			'meta'    => array(
+				'timestamp' => time(),
+				'version'   => defined( 'XOPHZ_COMPASS_CARD_VAULT_VERSION' ) ? XOPHZ_COMPASS_CARD_VAULT_VERSION : '1.0.0',
+			),
+		), 200 );
+	}
+
+	/**
+	 * Handle POST /products.
+	 */
+	public function handle_save_product( $request ) {
+		$params = $request->get_json_params();
+		if ( empty( $params ) || ! is_array( $params ) ) {
+			return new WP_REST_Response( array(
+				'success' => false,
+				'error'   => 'Product data payload required.',
+			), 400 );
+		}
+
+		$result = Card_Vault_Products::save_product( $params );
+		if ( is_wp_error( $result ) ) {
+			return new WP_REST_Response( array(
+				'success' => false,
+				'error'   => $result->get_error_message(),
+			), $result->get_error_data()['status'] ?? 400 );
+		}
+
+		return new WP_REST_Response( array(
+			'success' => true,
+			'data'    => $result,
+			'meta'    => array(
+				'timestamp' => time(),
+			),
+		), 200 );
+	}
+
+	/**
+	 * Handle POST /products/stock.
+	 */
+	public function handle_update_product_stock( $request ) {
+		$params     = $request->get_json_params();
+		$product_id = isset( $params['productId'] ) ? intval( $params['productId'] ) : 0;
+		$quantity   = isset( $params['quantity'] ) ? intval( $params['quantity'] ) : 0;
+		$action     = isset( $params['action'] ) ? sanitize_text_field( $params['action'] ) : 'set';
+
+		if ( ! $product_id ) {
+			return new WP_REST_Response( array(
+				'success' => false,
+				'error'   => 'productId is required.',
+			), 400 );
+		}
+
+		$result = Card_Vault_Products::update_product_stock( $product_id, $quantity, $action );
+		if ( is_wp_error( $result ) ) {
+			return new WP_REST_Response( array(
+				'success' => false,
+				'error'   => $result->get_error_message(),
+			), $result->get_error_data()['status'] ?? 400 );
+		}
+
+		return new WP_REST_Response( array(
+			'success' => true,
+			'data'    => $result,
+			'meta'    => array(
+				'timestamp' => time(),
+			),
+		), 200 );
+	}
+
+	/**
+	 * Handle POST /products/lookup-barcode.
+	 */
+	public function handle_lookup_barcode( $request ) {
+		$params  = $request->get_json_params();
+		$barcode = isset( $params['barcode'] ) ? sanitize_text_field( $params['barcode'] ) : '';
+
+		if ( empty( $barcode ) ) {
+			return new WP_REST_Response( array(
+				'success' => false,
+				'error'   => 'Barcode is required.',
+			), 400 );
+		}
+
+		$result = Card_Vault_Products::lookup_barcode( $barcode );
+		if ( is_wp_error( $result ) ) {
+			return new WP_REST_Response( array(
+				'success' => false,
+				'error'   => $result->get_error_message(),
+			), $result->get_error_data()['status'] ?? 404 );
+		}
+
+		return new WP_REST_Response( array(
+			'success' => true,
+			'data'    => $result,
+			'meta'    => array(
+				'timestamp' => time(),
+			),
 		), 200 );
 	}
 }

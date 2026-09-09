@@ -32,6 +32,8 @@ require_once XOPHZ_COMPASS_CARD_VAULT_PATH . 'includes/class-card-vault-consignm
 require_once XOPHZ_COMPASS_CARD_VAULT_PATH . 'includes/class-card-vault-community.php';
 require_once XOPHZ_COMPASS_CARD_VAULT_PATH . 'includes/class-card-vault-wc-sync.php';
 require_once XOPHZ_COMPASS_CARD_VAULT_PATH . 'includes/class-card-vault-gemini.php';
+require_once XOPHZ_COMPASS_CARD_VAULT_PATH . 'includes/class-card-vault-stripe.php';
+require_once XOPHZ_COMPASS_CARD_VAULT_PATH . 'includes/class-card-vault-products.php';
 require_once XOPHZ_COMPASS_CARD_VAULT_PATH . 'includes/class-card-vault-api.php';
 require_once XOPHZ_COMPASS_CARD_VAULT_PATH . 'admin/class-card-vault-admin.php';
 require_once XOPHZ_COMPASS_CARD_VAULT_PATH . 'public/class-card-vault-public.php';

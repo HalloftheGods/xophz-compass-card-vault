@@ -3,6 +3,22 @@
 All notable changes to this WordPress plugin submodule will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [2026-09-08]
+
+### Added
+- **Stripe Payments Bridge & WP Connectors**: Created `includes/class-card-vault-stripe.php` retrieving `stripe_secret_key` and `stripe_publishable_key` dynamically from `wp_get_connectors()` to generate instant Stripe Checkout Sessions and QR pay links for card shows and shop counters.
+- **Bazaar-Compatible Product Backend**: Created `includes/class-card-vault-products.php` providing WooCommerce product CRUD, atomic stock updates, and global barcode resolution (Local Inventory, TCG Master Catalog & UPCitemdb) for sealed boxes, packs, supplies, and singles.
+- **REST Endpoints for POS & Products**: Registered routes in `includes/class-card-vault-api.php`:
+  - `GET /pos/config`: Returns payment configuration, publishable key, and currency symbol.
+  - `POST /pos/checkout`: Generates POS orders and Stripe Checkout Sessions with QR payloads.
+  - `POST /pos/verify-payment`: Reconciles payment sessions and marks WooCommerce orders complete.
+  - `GET /products` and `POST /products`: Manages shop products with Bazaar schema compatibility.
+  - `POST /products/stock`: Atomic stock quantity adjustments (set, add, subtract).
+  - `POST /products/lookup-barcode`: Universal barcode query for card accessories and sealed inventory.
+
+### Fixed
+- Integration: Ensured Card Vault is discovered and registered with COMPASS Starship dashboard and Universal Plugin Bridge.
+
 ## [2026-09-05]
 
 ### Added
