@@ -1099,10 +1099,22 @@ class Card_Vault_API {
 		$billing = sanitize_key( $params['billing'] ?? 'annual' );
 		$return_url = ! empty( $params['return_url'] ) ? esc_url_raw( $params['return_url'] ) : '';
 
+		$trial_days = 0;
+		if ( $billing === 'annual' ) {
+			if ( isset( $params['trial_days'] ) ) {
+				$trial_days = intval( $params['trial_days'] );
+			} elseif ( $tier === 'single' ) {
+				$trial_days = 3;
+			} elseif ( $tier === 'team' ) {
+				$trial_days = 7;
+			}
+		}
+
 		$target_slug  = "card-vault/{$tier}-{$billing}";
 		$query_params = array(
 			'billing'    => $billing,
 			'return_url' => $return_url,
+			'trial_days' => $trial_days,
 		);
 
 		if ( class_exists( 'Xophz_Bazaar_Checkout_Service' ) ) {
@@ -1122,6 +1134,9 @@ class Card_Vault_API {
 		}
 
 		$fallback_url = home_url( "/buy/{$target_slug}" );
+		if ( $trial_days > 0 ) {
+			$fallback_url = add_query_arg( 'trial_days', $trial_days, $fallback_url );
+		}
 		if ( ! empty( $return_url ) ) {
 			$fallback_url = add_query_arg( 'return_url', rawurlencode( $return_url ), $fallback_url );
 		}
