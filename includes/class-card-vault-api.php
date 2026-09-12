@@ -219,6 +219,25 @@ class Card_Vault_API {
 			'callback'            => array( $this, 'handle_license_checkout' ),
 			'permission_callback' => '__return_true',
 		) );
+
+		// 16. Dedicated Authentication Endpoints (Bypasses wp-login.php Turnstile)
+		register_rest_route( self::NAMESPACE, '/auth/login', array(
+			'methods'             => WP_REST_Server::CREATABLE,
+			'callback'            => array( $this, 'handle_auth_login' ),
+			'permission_callback' => '__return_true',
+		) );
+
+		register_rest_route( self::NAMESPACE, '/auth/logout', array(
+			'methods'             => WP_REST_Server::CREATABLE,
+			'callback'            => array( $this, 'handle_auth_logout' ),
+			'permission_callback' => '__return_true',
+		) );
+
+		register_rest_route( self::NAMESPACE, '/auth/me', array(
+			'methods'             => WP_REST_Server::READABLE,
+			'callback'            => array( $this, 'handle_auth_me' ),
+			'permission_callback' => '__return_true',
+		) );
 	}
 
 	/**
@@ -1147,6 +1166,137 @@ class Card_Vault_API {
 			'data'    => array(
 				'url'          => $fallback_url,
 				'checkout_url' => $fallback_url,
+			),
+		), 200 );
+	}
+
+	/**
+	 * Handle POST /auth/login.
+	 * Authenticates user credentials directly via WordPress without triggering wp-login.php Turnstile captcha.
+	 *
+	 * @param WP_REST_Request $request Request.
+	 * @return WP_REST_Response
+	 */
+	public function handle_auth_login( $request ) {
+		$params   = $request->get_json_params();
+		$username = isset( $params['username'] ) ? trim( (string) $params['username'] ) : '';
+		$password = isset( $params['password'] ) ? (string) $params['password'] : '';
+		$remember = ! empty( $params['remember'] );
+
+		if ( empty( $username ) || empty( $password ) ) {
+			return new WP_REST_Response( array(
+				'success' => false,
+				'error'   => __( 'Username and password are required.', 'xophz-compass-card-vault' ),
+			), 400 );
+		}
+
+		// Support email or username lookup
+		$auth_login = $username;
+		if ( is_email( $username ) ) {
+			$user_by_email = get_user_by( 'email', $username );
+			if ( $user_by_email ) {
+				$auth_login = $user_by_email->user_login;
+			}
+		}
+
+		// Direct username and password authentication bypassing wp-login.php Turnstile captcha
+		$user = wp_authenticate_username_password( null, $auth_login, $password );
+
+		if ( is_wp_error( $user ) ) {
+			return new WP_REST_Response( array(
+				'success' => false,
+				'error'   => __( 'Invalid credentials. Please check your username and password.', 'xophz-compass-card-vault' ),
+			), 401 );
+		}
+
+		// Establish logged-in WordPress session
+		wp_set_current_user( $user->ID, $user->user_login );
+		wp_set_auth_cookie( $user->ID, $remember, is_ssl() );
+		do_action( 'wp_login', $user->user_login, $user );
+
+		// Determine user role and linked consignor
+		$user_id   = $user->ID;
+		$roles     = (array) $user->roles;
+		$is_dealer = user_can( $user, 'manage_options' ) || user_can( $user, 'manage_card_vault' ) || in_array( 'shop_manager', $roles, true );
+		$consignor = class_exists( 'Card_Vault_Consignments' ) ? Card_Vault_Consignments::get_consignor_by_user_id( $user_id ) : null;
+
+		$role = 'collector';
+		if ( $is_dealer ) {
+			$role = 'dealer';
+		} elseif ( in_array( 'card_vault_consignor', $roles, true ) ) {
+			$role = 'consignor';
+		}
+
+		return new WP_REST_Response( array(
+			'success' => true,
+			'nonce'   => wp_create_nonce( 'wp_rest' ),
+			'user'    => array(
+				'id'          => $user_id,
+				'userLogin'   => $user->user_login,
+				'displayName' => $user->display_name,
+				'email'       => $user->user_email,
+				'role'        => $role,
+				'consignorId' => $consignor ? $consignor['consignor_id'] : null,
+			),
+		), 200 );
+	}
+
+	/**
+	 * Handle POST /auth/logout.
+	 * Terminates the active WordPress session.
+	 *
+	 * @return WP_REST_Response
+	 */
+	public function handle_auth_logout() {
+		wp_logout();
+
+		return new WP_REST_Response( array(
+			'success' => true,
+			'nonce'   => wp_create_nonce( 'wp_rest' ),
+		), 200 );
+	}
+
+	/**
+	 * Handle GET /auth/me.
+	 * Retrieves current authenticated user state and fresh REST nonce.
+	 *
+	 * @return WP_REST_Response
+	 */
+	public function handle_auth_me() {
+		$user_id = get_current_user_id();
+
+		if ( ! $user_id ) {
+			return new WP_REST_Response( array(
+				'success'    => true,
+				'isLoggedIn' => false,
+				'nonce'      => wp_create_nonce( 'wp_rest' ),
+				'user'       => null,
+			), 200 );
+		}
+
+		$user      = wp_get_current_user();
+		$roles     = (array) $user->roles;
+		$is_dealer = user_can( $user, 'manage_options' ) || user_can( $user, 'manage_card_vault' ) || in_array( 'shop_manager', $roles, true );
+		$consignor = class_exists( 'Card_Vault_Consignments' ) ? Card_Vault_Consignments::get_consignor_by_user_id( $user_id ) : null;
+
+		$role = 'collector';
+		if ( $is_dealer ) {
+			$role = 'dealer';
+		} elseif ( in_array( 'card_vault_consignor', $roles, true ) ) {
+			$role = 'consignor';
+		}
+
+		return new WP_REST_Response( array(
+			'success'    => true,
+			'isLoggedIn' => true,
+			'nonce'      => wp_create_nonce( 'wp_rest' ),
+			'user'       => array(
+				'id'          => $user_id,
+				'userLogin'   => $user->user_login,
+				'displayName' => $user->display_name,
+				'email'       => $user->user_email,
+				'role'        => $role,
+				'consignorId' => $consignor ? $consignor['consignor_id'] : null,
 			),
 		), 200 );
 	}

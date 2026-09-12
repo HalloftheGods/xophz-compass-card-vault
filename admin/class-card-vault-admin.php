@@ -20,6 +20,8 @@ class Card_Vault_Admin {
 		add_action( 'admin_init', array( $this, 'register_settings' ) );
 		add_action( 'admin_init', array( $this, 'handle_form_submissions' ) );
 		add_action( 'admin_enqueue_scripts', array( $this, 'enqueue_admin_assets' ) );
+		add_action( 'show_user_profile', array( $this, 'render_user_profile_collection' ) );
+		add_action( 'edit_user_profile', array( $this, 'render_user_profile_collection' ) );
 	}
 
 	/**
@@ -499,6 +501,110 @@ class Card_Vault_Admin {
 				</table>
 				<?php submit_button(); ?>
 			</form>
+		</div>
+		<?php
+	}
+
+	/**
+	 * Render synced Card Vault collection on the WordPress user profile.
+	 *
+	 * @param WP_User $user Current user object.
+	 */
+	public function render_user_profile_collection( $user ) {
+		if ( ! $user || ! isset( $user->ID ) ) {
+			return;
+		}
+
+		$items        = class_exists( 'Card_Vault_Community' ) ? Card_Vault_Community::get_collector_items( $user->ID ) : array();
+		$custom_slug  = get_option( 'xophz_compass_card_vault_custom_slug', 'card-vault' );
+		$app_url      = home_url( '/' . $custom_slug );
+		$showcase_url = add_query_arg( 'showcase', $user->user_login, $app_url );
+
+		$total_cards = 0;
+		$total_value = 0.0;
+		foreach ( $items as $item ) {
+			$qty          = isset( $item['quantity'] ) ? (int) $item['quantity'] : 1;
+			$total_cards += $qty;
+			$price        = isset( $item['marketPrice'] ) ? (float) $item['marketPrice'] : 0.0;
+			$total_value += ( $price * $qty );
+		}
+		?>
+		<h2 style="margin-top: 30px; display: flex; align-items: center; gap: 8px;">
+			<span class="dashicons dashicons-tickets-alt" style="color: #0284c7; font-size: 24px; width: 24px; height: 24px;"></span>
+			<?php esc_html_e( 'Card Vault Collection', 'xophz-compass-card-vault' ); ?>
+		</h2>
+
+		<div class="cv-user-profile-section" style="max-width: 960px; background: #0f172a; border: 1px solid #1e293b; border-radius: 12px; padding: 20px; color: #f1f5f9; margin-bottom: 24px;">
+			<!-- Summary Bar -->
+			<div style="display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 16px; border-bottom: 1px solid #334155; padding-bottom: 16px; margin-bottom: 16px;">
+				<div style="display: flex; align-items: center; gap: 24px;">
+					<div>
+						<div style="font-size: 11px; text-transform: uppercase; color: #94a3b8; font-weight: 600;"><?php esc_html_e( 'Cards Synced', 'xophz-compass-card-vault' ); ?></div>
+						<div style="font-size: 22px; font-weight: 800; color: #38bdf8;"><?php echo esc_html( number_format( $total_cards ) ); ?></div>
+					</div>
+					<div>
+						<div style="font-size: 11px; text-transform: uppercase; color: #94a3b8; font-weight: 600;"><?php esc_html_e( 'Portfolio Market Value', 'xophz-compass-card-vault' ); ?></div>
+						<div style="font-size: 22px; font-weight: 800; color: #34d399;">$<?php echo esc_html( number_format( $total_value, 2 ) ); ?></div>
+					</div>
+				</div>
+
+				<div style="display: flex; gap: 10px;">
+					<a href="<?php echo esc_url( $app_url ); ?>" target="_blank" class="button button-primary" style="background: #0284c7; border-color: #0369a1; color: #ffffff; text-decoration: none; border-radius: 8px;">
+						<?php esc_html_e( 'Open Card Vault', 'xophz-compass-card-vault' ); ?> &rarr;
+					</a>
+					<?php if ( ! empty( $items ) ) : ?>
+						<a href="<?php echo esc_url( $showcase_url ); ?>" target="_blank" class="button" style="background: #1e293b; color: #38bdf8; border-color: #334155; text-decoration: none; border-radius: 8px;">
+							<?php esc_html_e( 'View Public Showcase', 'xophz-compass-card-vault' ); ?> &nearr;
+						</a>
+					<?php endif; ?>
+				</div>
+			</div>
+
+			<!-- Cards Grid -->
+			<?php if ( empty( $items ) ) : ?>
+				<div style="padding: 24px; text-align: center; color: #94a3b8; font-size: 13px;">
+					<p style="margin-bottom: 8px;"><?php esc_html_e( 'No cards synced to this WordPress profile yet.', 'xophz-compass-card-vault' ); ?></p>
+					<p style="font-size: 12px; color: #64748b;"><?php esc_html_e( 'Open Card Vault, log in with your WordPress account, and click "Push to Cloud" to sync your binder.', 'xophz-compass-card-vault' ); ?></p>
+				</div>
+			<?php else : ?>
+				<div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 12px; max-height: 480px; overflow-y: auto; padding: 4px;">
+					<?php foreach ( array_slice( $items, 0, 24 ) as $card_item ) : ?>
+						<?php
+						$card_meta  = isset( $card_item['card'] ) && is_array( $card_item['card'] ) ? $card_item['card'] : array();
+						$card_name  = $card_meta['name'] ?? ( $card_item['cardName'] ?? 'Card' );
+						$set_name   = $card_meta['setName'] ?? '';
+						$card_img   = $card_meta['images']['small'] ?? ( $card_meta['images']['large'] ?? '' );
+						$condition  = $card_item['condition'] ?? 'NM';
+						$price      = isset( $card_item['marketPrice'] ) ? (float) $card_item['marketPrice'] : 0.0;
+						$qty        = isset( $card_item['quantity'] ) ? (int) $card_item['quantity'] : 1;
+						?>
+						<div style="background: #1e293b; border: 1px solid #334155; border-radius: 8px; padding: 10px; font-size: 12px; display: flex; flex-direction: column; justify-content: space-between;">
+							<?php if ( ! empty( $card_img ) ) : ?>
+								<div style="text-align: center; margin-bottom: 8px;">
+									<img src="<?php echo esc_url( $card_img ); ?>" alt="<?php echo esc_attr( $card_name ); ?>" style="max-height: 110px; border-radius: 4px; object-fit: contain;" />
+								</div>
+							<?php endif; ?>
+							<div>
+								<div style="font-weight: 700; color: #f8fafc; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="<?php echo esc_attr( $card_name ); ?>">
+									<?php echo esc_html( $card_name ); ?>
+								</div>
+								<div style="font-size: 10px; color: #94a3b8; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+									<?php echo esc_html( $set_name ); ?>
+								</div>
+							</div>
+							<div style="display: flex; justify-content: space-between; align-items: center; margin-top: 8px; padding-top: 6px; border-top: 1px solid #334155; font-size: 11px;">
+								<span style="background: #0f172a; color: #cbd5e1; padding: 1px 6px; border-radius: 4px; font-family: monospace;"><?php echo esc_html( $condition ); ?> &times;<?php echo esc_html( $qty ); ?></span>
+								<span style="font-weight: 700; color: #34d399; font-family: monospace;">$<?php echo esc_html( number_format( $price, 2 ) ); ?></span>
+							</div>
+						</div>
+					<?php endforeach; ?>
+				</div>
+				<?php if ( count( $items ) > 24 ) : ?>
+					<p style="font-size: 11px; color: #94a3b8; text-align: center; margin-top: 10px;">
+						<?php printf( esc_html__( 'Showing 24 of %d cards. Open Card Vault to view full inventory.', 'xophz-compass-card-vault' ), count( $items ) ); ?>
+					</p>
+				<?php endif; ?>
+			<?php endif; ?>
 		</div>
 		<?php
 	}

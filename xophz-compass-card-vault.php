@@ -60,6 +60,9 @@ class Card_Vault extends Xophz_Compass_Plugin_Base {
 		// Initialize WooCommerce order hooks
 		Card_Vault_WC_Sync::init();
 
+		// Initialize Community WooCommerce account hooks
+		Card_Vault_Community::init();
+
 		// Initialize public router and reverse proxy
 		new Card_Vault_Public();
 

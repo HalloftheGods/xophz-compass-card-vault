@@ -5,6 +5,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [2026-09-12]
 
+### Added
+- **In-App WordPress Authentication REST Endpoints**: Registered `/auth/login`, `/auth/logout`, and `/auth/me` in `includes/class-card-vault-api.php` utilizing `wp_authenticate_username_password()`, `wp_set_current_user()`, and `wp_set_auth_cookie()` with direct username or email fallback, cleanly bypassing Turnstile CAPTCHA on `wp-login.php`.
+- **WordPress Admin Profile Collection Display**: Added `show_user_profile` and `edit_user_profile` hooks in `admin/class-card-vault-admin.php` rendering a dedicated dark-mode Card Vault Collection table with total card count, estimated raw portfolio value, and a 24-card preview grid on `wp-admin/profile.php`.
+- **WooCommerce My Account Vault Endpoint**: Registered `/my-account/card-vault` endpoint and menu tab in `includes/class-card-vault-community.php` enabling logged-in collectors to review their synced cloud inventory directly within WooCommerce My Account.
+
 ### Changed
 - **Frontend Dev Proxy API Settings Version Propagation**: Injected `version` and `versionString` matching `XOPHZ_COMPASS_CARD_VAULT_VERSION` (`26.9.12-1209`) in `filter_api_settings` within `public/class-card-vault-public.php` to guarantee active runtime plugin version is accessible to frontend consumers.
 - **Collector Show Bid Ingestion & Fallbacks**: Enhanced `submit_show_bid` in `includes/class-card-vault-community.php` to resolve target collectors via explicit `collectorUserId`, logged-in session, or primary administrator fallback, with safe default booth/contact fallbacks.
