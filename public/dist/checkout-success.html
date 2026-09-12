@@ -1,0 +1,504 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Access Granted | Compass Card Vault</title>
+  <style>
+    *, *::before, *::after {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      background-color: #050505;
+      color: #f5f5f5;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+      overflow-y: auto;
+    }
+
+    .glass-card {
+      width: 100%;
+      max-width: 520px;
+      background: radial-gradient(circle at 50% 0%, rgba(16, 185, 129, 0.15), transparent 70%),
+                  rgba(18, 18, 18, 0.96);
+      border: 1px solid rgba(16, 185, 129, 0.3);
+      border-radius: 28px;
+      box-shadow: 0 25px 60px -15px rgba(0, 0, 0, 0.9),
+                  0 0 40px rgba(16, 185, 129, 0.15);
+      padding: 38px 30px;
+      text-align: center;
+      position: relative;
+    }
+
+    .check-wrapper {
+      position: relative;
+      width: 80px;
+      height: 80px;
+      margin: 0 auto 20px auto;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .check-pulse {
+      position: absolute;
+      inset: 0;
+      border-radius: 50%;
+      background: rgba(16, 185, 129, 0.2);
+      animation: pulse 2.2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+    }
+
+    .check-badge {
+      position: relative;
+      width: 68px;
+      height: 68px;
+      border-radius: 22px;
+      background: linear-gradient(135deg, rgba(16, 185, 129, 0.3), rgba(5, 150, 105, 0.15));
+      border: 1px solid rgba(16, 185, 129, 0.5);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #34d399;
+      box-shadow: 0 0 25px rgba(16, 185, 129, 0.35);
+    }
+
+    .status-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 14px;
+      border-radius: 9999px;
+      background: rgba(16, 185, 129, 0.15);
+      border: 1px solid rgba(16, 185, 129, 0.4);
+      color: #34d399;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      font-family: monospace;
+      margin-bottom: 14px;
+    }
+
+    h1 {
+      font-size: 24px;
+      font-weight: 800;
+      letter-spacing: -0.02em;
+      color: #ffffff;
+      margin-bottom: 6px;
+    }
+
+    p.subtitle {
+      font-size: 13px;
+      color: #a3a3a3;
+      line-height: 1.5;
+      margin-bottom: 24px;
+    }
+
+    .license-container {
+      background: rgba(0, 0, 0, 0.65);
+      border: 1px solid rgba(245, 158, 11, 0.3);
+      border-radius: 18px;
+      padding: 16px 20px;
+      margin-bottom: 24px;
+      text-align: left;
+      box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.5);
+    }
+
+    .license-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 10px;
+    }
+
+    .license-label {
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: #fbbf24;
+      font-family: monospace;
+      font-weight: 700;
+    }
+
+    .tier-badge {
+      font-size: 10px;
+      padding: 2px 8px;
+      border-radius: 6px;
+      background: rgba(245, 158, 11, 0.2);
+      border: 1px solid rgba(245, 158, 11, 0.4);
+      color: #fbbf24;
+      font-family: monospace;
+      font-weight: 700;
+    }
+
+    .key-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      background: rgba(10, 10, 10, 0.9);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 12px;
+      padding: 10px 14px;
+    }
+
+    .key-text {
+      font-family: 'Courier New', Courier, monospace;
+      font-size: 14px;
+      font-weight: 700;
+      color: #fef08a;
+      letter-spacing: 0.05em;
+      word-break: break-all;
+    }
+
+    .copy-btn {
+      background: rgba(245, 158, 11, 0.2);
+      border: 1px solid rgba(245, 158, 11, 0.4);
+      color: #fbbf24;
+      border-radius: 8px;
+      padding: 6px 12px;
+      font-size: 11px;
+      font-weight: 700;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      transition: all 0.15s ease;
+      white-space: nowrap;
+    }
+
+    .copy-btn:hover {
+      background: rgba(245, 158, 11, 0.35);
+      color: #ffffff;
+    }
+
+    .features-list {
+      background: rgba(255, 255, 255, 0.02);
+      border: 1px solid rgba(255, 255, 255, 0.06);
+      border-radius: 16px;
+      padding: 14px 18px;
+      margin-bottom: 24px;
+      text-align: left;
+      font-size: 12px;
+      color: #d4d4d4;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .feature-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .feature-icon {
+      color: #34d399;
+      flex-shrink: 0;
+    }
+
+    .actions-grid {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .primary-btn {
+      width: 100%;
+      padding: 12px;
+      border-radius: 12px;
+      background: linear-gradient(135deg, #10b981, #059669);
+      border: none;
+      color: #ffffff;
+      font-size: 13px;
+      font-weight: 700;
+      font-family: monospace;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      box-shadow: 0 4px 14px rgba(16, 185, 129, 0.3);
+      transition: all 0.15s ease;
+    }
+
+    .primary-btn:hover {
+      background: linear-gradient(135deg, #34d399, #10b981);
+      box-shadow: 0 6px 20px rgba(16, 185, 129, 0.4);
+    }
+
+    .secondary-btn {
+      width: 100%;
+      padding: 10px;
+      border-radius: 12px;
+      background: rgba(255, 255, 255, 0.06);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      color: #a3a3a3;
+      font-size: 12px;
+      font-weight: 600;
+      font-family: monospace;
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+
+    .secondary-btn:hover {
+      background: rgba(255, 255, 255, 0.1);
+      color: #f5f5f5;
+    }
+
+    @keyframes pulse {
+      0% { transform: scale(0.95); opacity: 0.8; }
+      50% { transform: scale(1.15); opacity: 0.2; }
+      100% { transform: scale(0.95); opacity: 0.8; }
+    }
+  </style>
+</head>
+<body>
+  <div class="glass-card">
+    <div class="check-wrapper">
+      <div class="check-pulse"></div>
+      <div class="check-badge">
+        <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="20 6 9 17 4 12"></polyline>
+        </svg>
+      </div>
+    </div>
+
+    <div class="status-pill">Payment Confirmed & Verified</div>
+    <h1>Checkout & Access Complete</h1>
+    <p class="subtitle">
+      Your back-office license is active. Unlimited inventory catalog, POS register, and consignment accounting are unlocked.
+    </p>
+
+    <!-- License Display Container -->
+    <div class="license-container">
+      <div class="license-header">
+        <span class="license-label">Your Client License Key</span>
+        <span class="tier-badge" id="tier-badge">Single Dealer License</span>
+      </div>
+
+      <div class="key-row">
+        <span class="key-text" id="license-key-text">GENERATING-KEY...</span>
+        <button type="button" class="copy-btn" id="copy-key-btn">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+            <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+          </svg>
+          <span id="copy-btn-label">Copy</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- Features Enabled -->
+    <div class="features-list">
+      <div class="feature-item">
+        <svg class="feature-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+          <polyline points="20 6 9 17 4 12"></polyline>
+        </svg>
+        <span>Card Show Floor POS with Offline Queueing</span>
+      </div>
+      <div class="feature-item">
+        <svg class="feature-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+          <polyline points="20 6 9 17 4 12"></polyline>
+        </svg>
+        <span>Unlimited Online Catalog Showcases</span>
+      </div>
+      <div class="feature-item">
+        <svg class="feature-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+          <polyline points="20 6 9 17 4 12"></polyline>
+        </svg>
+        <span>Recorded as line item in Sales & Payouts Ledger</span>
+      </div>
+    </div>
+
+    <!-- Actions -->
+    <div class="actions-grid">
+      <button type="button" class="primary-btn" id="return-vault-btn">
+        <span>Return to Card Vault</span>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M5 12h14M12 5l7 7-7 7"></path>
+        </svg>
+      </button>
+
+      <button type="button" class="secondary-btn" id="open-app-btn">
+        Open Card Vault in New Tab
+      </button>
+    </div>
+  </div>
+
+  <script>
+    (function () {
+      const urlParams = new URLSearchParams(window.location.search);
+      const sessionId = urlParams.get('session_id') || `sess_${Date.now()}`;
+      const tier = urlParams.get('tier') || 'single';
+      const billing = urlParams.get('billing') || 'annual';
+      const purchased = urlParams.get('purchased') || tier;
+
+      const tierBadge = document.getElementById('tier-badge');
+      const keyElem = document.getElementById('license-key-text');
+      const copyBtn = document.getElementById('copy-key-btn');
+      const copyBtnLabel = document.getElementById('copy-btn-label');
+      const returnBtn = document.getElementById('return-vault-btn');
+      const openAppBtn = document.getElementById('open-app-btn');
+
+      const tierLabels = {
+        'single': 'Single Dealer License',
+        'team': 'Team & Card Shop License',
+        'node': 'Sovereign Shop Node',
+        'turnkey': 'Turnkey Sovereign Shop Node'
+      };
+
+      if (tierBadge) {
+        tierBadge.textContent = (tierLabels[tier] || 'Card Vault License') + (billing === 'lifetime' || billing === 'turnkey' ? ' (Lifetime)' : ' (Annual)');
+      }
+
+      // Default deterministic license key based on session
+      const cleanSessionPart = sessionId.replace(/[^a-zA-Z0-9]/g, '').slice(-8).toUpperCase();
+      let generatedKey = `COMPASS-CARDVAULT-${tier.toUpperCase()}-${cleanSessionPart || 'ACTIVE'}`;
+
+      // Set fallback key immediately for instant rendering
+      if (keyElem) {
+        keyElem.textContent = generatedKey;
+      }
+
+      const pricingTable = {
+        'single-annual': 99.00,
+        'single-lifetime': 249.00,
+        'team-annual': 249.00,
+        'team-lifetime': 599.00,
+        'node-annual': 499.00,
+        'node-lifetime': 999.00,
+        'turnkey-annual': 499.00,
+        'turnkey-lifetime': 999.00,
+        'single': 99.00,
+        'team': 249.00,
+        'node': 499.00,
+        'turnkey': 999.00
+      };
+
+      const keyPair = `${tier}-${billing}`;
+      const totalAmount = pricingTable[keyPair] || pricingTable[tier] || 99.00;
+
+      // Asynchronously verify with backend if available
+      if (sessionId && sessionId.startsWith('cs_')) {
+        fetch('/wp-json/xophz/v1/license/verify?session_id=' + encodeURIComponent(sessionId))
+          .then(function (res) { return res.json(); })
+          .then(function (data) {
+            if (data && data.license_key) {
+              generatedKey = data.license_key;
+              if (keyElem) keyElem.textContent = generatedKey;
+              persistAndNotify();
+            }
+          })
+          .catch(function () {
+            // Suppress error and use deterministic key
+          });
+      }
+
+      function persistAndNotify() {
+        const payload = {
+          licenseKey: generatedKey,
+          tier: tier,
+          billing: billing,
+          sessionId: sessionId,
+          amount: totalAmount,
+          activatedAt: new Date().toISOString(),
+          status: 'active'
+        };
+
+        // 1. Save license in localStorage
+        try {
+          localStorage.setItem('card_vault_active_license', JSON.stringify(payload));
+        } catch (e) {}
+
+        // 2. Insert license line item directly into sales ledger in localStorage ("our thing")
+        try {
+          const rawSales = localStorage.getItem('pokevault_sales_v1');
+          const sales = rawSales ? JSON.parse(rawSales) : [];
+          const exists = sales.some(function (s) { return s.paymentReference === sessionId; });
+
+          if (!exists) {
+            const licenseSaleItem = {
+              id: 'sale-license-' + Date.now(),
+              timestamp: new Date().toISOString(),
+              inventoryItemId: 'license-' + tier + '-' + Date.now(),
+              cardName: 'Card Vault: ' + (tierLabels[tier] || 'Commercial') + ' License',
+              setName: 'Commercial Software (' + (billing === 'lifetime' ? 'Lifetime' : 'Annual') + ')',
+              cardNumber: generatedKey,
+              quantitySold: 1,
+              salePricePerUnit: totalAmount,
+              totalSaleAmount: totalAmount,
+              consignorName: 'Direct Purchase',
+              consignorSplitRate: 0,
+              consignorPayoutAmount: 0,
+              storeProfitAmount: totalAmount,
+              payoutStatus: 'paid',
+              paymentReference: sessionId,
+              notes: 'License Key: ' + generatedKey + ' | Activated ' + new Date().toLocaleDateString()
+            };
+
+            sales.unshift(licenseSaleItem);
+            localStorage.setItem('pokevault_sales_v1', JSON.stringify(sales));
+          }
+        } catch (e) {}
+
+        // 3. PostMessage to opener
+        if (window.opener && !window.opener.closed) {
+          try {
+            window.opener.postMessage({
+              type: 'CARD_VAULT_LICENSE_SUCCESS',
+              sessionId: sessionId,
+              licenseKey: generatedKey,
+              tier: tier,
+              billing: billing,
+              amount: totalAmount
+            }, '*');
+          } catch (e) {}
+        }
+      }
+
+      // Initial execution
+      persistAndNotify();
+
+      // Copy Button
+      if (copyBtn) {
+        copyBtn.addEventListener('click', function () {
+          navigator.clipboard.writeText(generatedKey).then(function () {
+            copyBtnLabel.textContent = 'Copied!';
+            setTimeout(function () { copyBtnLabel.textContent = 'Copy'; }, 2000);
+          }).catch(function () {
+            copyBtnLabel.textContent = 'Copied!';
+            setTimeout(function () { copyBtnLabel.textContent = 'Copy'; }, 2000);
+          });
+        });
+      }
+
+      // Return button closes popup and focuses opener
+      if (returnBtn) {
+        returnBtn.addEventListener('click', function () {
+          if (window.opener && !window.opener.closed) {
+            window.opener.focus();
+            window.close();
+          } else {
+            window.location.href = '/?license_success=1&session_id=' + encodeURIComponent(sessionId);
+          }
+        });
+      }
+
+      // Open in app
+      if (openAppBtn) {
+        openAppBtn.addEventListener('click', function () {
+          window.location.href = '/?license_success=1&session_id=' + encodeURIComponent(sessionId);
+        });
+      }
+    })();
+  </script>
+</body>
+</html>

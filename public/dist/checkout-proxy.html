@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Securing Checkout | Compass Card Vault</title>
+  <style>
+    *, *::before, *::after {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      background-color: #050505;
+      color: #f5f5f5;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+      overflow: hidden;
+    }
+
+    .glass-panel {
+      width: 100%;
+      max-width: 480px;
+      background: radial-gradient(circle at 50% 0%, rgba(245, 158, 11, 0.12), transparent 70%),
+                  rgba(18, 18, 18, 0.95);
+      border: 1px solid rgba(245, 158, 11, 0.25);
+      border-radius: 28px;
+      box-shadow: 0 25px 60px -15px rgba(0, 0, 0, 0.9),
+                  0 0 40px rgba(245, 158, 11, 0.15);
+      padding: 40px 32px;
+      text-align: center;
+      position: relative;
+    }
+
+    .shield-wrapper {
+      position: relative;
+      width: 88px;
+      height: 88px;
+      margin: 0 auto 24px auto;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .shield-pulse {
+      position: absolute;
+      inset: 0;
+      border-radius: 50%;
+      background: rgba(245, 158, 11, 0.2);
+      animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+    }
+
+    .shield-badge {
+      position: relative;
+      width: 72px;
+      height: 72px;
+      border-radius: 20px;
+      background: linear-gradient(135deg, rgba(245, 158, 11, 0.25), rgba(217, 119, 6, 0.1));
+      border: 1px solid rgba(245, 158, 11, 0.4);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #fbbf24;
+      box-shadow: 0 0 20px rgba(245, 158, 11, 0.3);
+    }
+
+    .tag-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 12px;
+      border-radius: 9999px;
+      background: rgba(245, 158, 11, 0.15);
+      border: 1px solid rgba(245, 158, 11, 0.35);
+      color: #fbbf24;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      font-family: monospace;
+      margin-bottom: 16px;
+    }
+
+    h1 {
+      font-size: 22px;
+      font-weight: 800;
+      letter-spacing: -0.02em;
+      color: #ffffff;
+      margin-bottom: 8px;
+    }
+
+    p.subtitle {
+      font-size: 13px;
+      color: #a3a3a3;
+      line-height: 1.5;
+      margin-bottom: 24px;
+    }
+
+    .plan-card {
+      background: rgba(0, 0, 0, 0.5);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 16px;
+      padding: 14px 18px;
+      margin-bottom: 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-family: monospace;
+    }
+
+    .plan-title {
+      font-size: 13px;
+      font-weight: 700;
+      color: #f5f5f5;
+      text-align: left;
+    }
+
+    .plan-badge {
+      font-size: 11px;
+      color: #34d399;
+      background: rgba(16, 185, 129, 0.15);
+      border: 1px solid rgba(16, 185, 129, 0.3);
+      padding: 2px 8px;
+      border-radius: 6px;
+      font-weight: 700;
+    }
+
+    .progress-bar-container {
+      width: 100%;
+      height: 4px;
+      background: rgba(255, 255, 255, 0.1);
+      border-radius: 9999px;
+      overflow: hidden;
+      margin-bottom: 16px;
+    }
+
+    .progress-bar-fill {
+      height: 100%;
+      width: 35%;
+      background: linear-gradient(90deg, #f59e0b, #fbbf24);
+      border-radius: 9999px;
+      animation: indeterminate 1.8s ease-in-out infinite;
+    }
+
+    .status-text {
+      font-size: 12px;
+      color: #fbbf24;
+      font-family: monospace;
+      font-weight: 600;
+      margin-bottom: 24px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+    }
+
+    .security-footer {
+      border-top: 1px solid rgba(255, 255, 255, 0.08);
+      padding-top: 18px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 16px;
+      font-size: 11px;
+      color: #737373;
+    }
+
+    .security-item {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .fallback-link {
+      display: none;
+      margin-top: 14px;
+      font-size: 12px;
+      color: #fbbf24;
+      text-decoration: underline;
+      cursor: pointer;
+    }
+
+    @keyframes pulse {
+      0% { transform: scale(0.95); opacity: 0.8; }
+      50% { transform: scale(1.15); opacity: 0.2; }
+      100% { transform: scale(0.95); opacity: 0.8; }
+    }
+
+    @keyframes indeterminate {
+      0% { transform: translateX(-100%); width: 30%; }
+      50% { transform: translateX(100%); width: 60%; }
+      100% { transform: translateX(300%); width: 30%; }
+    }
+  </style>
+</head>
+<body>
+  <div class="glass-panel">
+    <div class="shield-wrapper">
+      <div class="shield-pulse"></div>
+      <div class="shield-badge">
+        <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+          <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+        </svg>
+      </div>
+    </div>
+
+    <div class="tag-pill">256-Bit Encrypted Gateway</div>
+    <h1 id="title-text">Securing Checkout Session</h1>
+    <p class="subtitle" id="subtitle-text">
+      Connecting directly to Stripe encrypted payment infrastructure. Please do not close or refresh this window.
+    </p>
+
+    <div class="plan-card">
+      <div class="plan-title" id="tier-display">Card Vault Commercial Access</div>
+      <div class="plan-badge" id="cycle-display">Annual Plan</div>
+    </div>
+
+    <div class="progress-bar-container">
+      <div class="progress-bar-fill"></div>
+    </div>
+
+    <div class="status-text" id="status-text">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="animate-spin">
+        <path d="M21 12a9 9 0 1 1-6.219-8.56"></path>
+      </svg>
+      <span>Initializing Stripe Checkout...</span>
+    </div>
+
+    <div class="security-footer">
+      <div class="security-item">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
+        </svg>
+        <span>Stripe Verified</span>
+      </div>
+      <span>•</span>
+      <div class="security-item">
+        <span>TLS 1.3 Encryption</span>
+      </div>
+      <span>•</span>
+      <div class="security-item">
+        <span>PCI-DSS Level 1</span>
+      </div>
+    </div>
+
+    <a id="manual-redirect-btn" class="fallback-link" href="#" target="_self">
+      Click here if not redirected automatically
+    </a>
+  </div>
+
+  <script>
+    (function () {
+      const urlParams = new URLSearchParams(window.location.search);
+      const tier = urlParams.get('tier') || 'single';
+      const billing = urlParams.get('billing') || 'annual';
+      const checkoutUrlParam = urlParams.get('checkout_url');
+
+      const tierNames = {
+        'single': 'Single Dealer License',
+        'team': 'Team & Card Shop License',
+        'node': 'Sovereign Shop Node',
+        'turnkey': 'Turnkey Sovereign Shop Node'
+      };
+
+      const tierElem = document.getElementById('tier-display');
+      const cycleElem = document.getElementById('cycle-display');
+      const statusElem = document.getElementById('status-text');
+      const manualBtn = document.getElementById('manual-redirect-btn');
+
+      if (tierElem) {
+        tierElem.textContent = tierNames[tier] || 'Card Vault License';
+      }
+      if (cycleElem) {
+        cycleElem.textContent = billing === 'lifetime' ? 'Lifetime Access' : 'Annual Subscription';
+      }
+
+      function proceedToStripe(url) {
+        if (!url) return;
+        statusElem.innerHTML = '<span>Handshake verified. Redirecting to Stripe...</span>';
+        if (manualBtn) {
+          manualBtn.href = url;
+          manualBtn.style.display = 'inline-block';
+        }
+        setTimeout(function () {
+          window.location.replace(url);
+        }, 350);
+      }
+
+      if (checkoutUrlParam) {
+        proceedToStripe(decodeURIComponent(checkoutUrlParam));
+      }
+
+      // Listen for message from parent window
+      window.addEventListener('message', function (event) {
+        if (event.data && (event.data.type === 'STRIPE_REDIRECT_URL' || event.data.checkout_url)) {
+          const targetUrl = event.data.checkout_url || event.data.url;
+          if (targetUrl) {
+            proceedToStripe(targetUrl);
+          }
+        }
+      });
+
+      // Let opener know the dummy proxy page is ready
+      if (window.opener && !window.opener.closed) {
+        try {
+          window.opener.postMessage({ type: 'CHECKOUT_PROXY_READY' }, '*');
+        } catch (e) {
+          // Cross-origin fallback
+        }
+      }
+    })();
+  </script>
+</body>
+</html>

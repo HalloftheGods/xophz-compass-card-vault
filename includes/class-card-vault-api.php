@@ -212,6 +212,13 @@ class Card_Vault_API {
 			'callback'            => array( $this, 'handle_lookup_barcode' ),
 			'permission_callback' => array( $this, 'check_dealer_permission' ),
 		) );
+
+		// 15. Card Vault License Checkout Session (Bazaar Integration)
+		register_rest_route( self::NAMESPACE, '/license/checkout', array(
+			'methods'             => WP_REST_Server::CREATABLE,
+			'callback'            => array( $this, 'handle_license_checkout' ),
+			'permission_callback' => '__return_true',
+		) );
 	}
 
 	/**
@@ -1076,6 +1083,55 @@ class Card_Vault_API {
 			'data'    => $result,
 			'meta'    => array(
 				'timestamp' => time(),
+			),
+		), 200 );
+	}
+
+	/**
+	 * Handle Card Vault license checkout session generation via Bazaar Checkout Service.
+	 *
+	 * @param WP_REST_Request $request
+	 * @return WP_REST_Response|WP_Error
+	 */
+	public function handle_license_checkout( $request ) {
+		$params  = $request->get_json_params() ?: array();
+		$tier    = sanitize_key( $params['tier'] ?? 'single' );
+		$billing = sanitize_key( $params['billing'] ?? 'annual' );
+		$return_url = ! empty( $params['return_url'] ) ? esc_url_raw( $params['return_url'] ) : '';
+
+		$target_slug  = "card-vault/{$tier}-{$billing}";
+		$query_params = array(
+			'billing'    => $billing,
+			'return_url' => $return_url,
+		);
+
+		if ( class_exists( 'Xophz_Bazaar_Checkout_Service' ) ) {
+			$result = Xophz_Bazaar_Checkout_Service::process_buy_request( array( 'card-vault', "{$tier}-{$billing}" ), $query_params, 'POST' );
+			if ( is_wp_error( $result ) ) {
+				return new WP_REST_Response( array(
+					'success' => false,
+					'error'   => $result->get_error_message(),
+				), $result->get_error_data()['status'] ?? 400 );
+			}
+
+			return new WP_REST_Response( array(
+				'success' => true,
+				'url'     => $result['url'] ?? ( $result['checkout_url'] ?? '' ),
+				'data'    => $result,
+			), 200 );
+		}
+
+		$fallback_url = home_url( "/buy/{$target_slug}" );
+		if ( ! empty( $return_url ) ) {
+			$fallback_url = add_query_arg( 'return_url', rawurlencode( $return_url ), $fallback_url );
+		}
+
+		return new WP_REST_Response( array(
+			'success' => true,
+			'url'     => $fallback_url,
+			'data'    => array(
+				'url'          => $fallback_url,
+				'checkout_url' => $fallback_url,
 			),
 		), 200 );
 	}
