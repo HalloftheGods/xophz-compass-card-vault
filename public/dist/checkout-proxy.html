@@ -276,8 +276,19 @@
       if (tierElem) {
         tierElem.textContent = tierNames[tier] || 'Card Vault License';
       }
+      const trialDaysParam = urlParams.get('trial_days');
+      const trialDays = trialDaysParam ? parseInt(trialDaysParam, 10) : (billing === 'annual' ? (tier === 'single' ? 3 : (tier === 'team' ? 7 : 0)) : 0);
+
       if (cycleElem) {
-        cycleElem.textContent = (tier === 'node' || tier === 'turnkey') ? 'Annual Managed Hosting' : (billing === 'lifetime' ? 'Lifetime Access' : 'Annual Subscription');
+        if (tier === 'node' || tier === 'turnkey') {
+          cycleElem.textContent = billing === 'monthly' ? 'Monthly Managed Hosting' : 'Annual Managed Hosting';
+        } else if (billing === 'lifetime') {
+          cycleElem.textContent = 'Lifetime Access';
+        } else if (trialDays > 0) {
+          cycleElem.textContent = `Annual Subscription (${trialDays}-Day Free Trial)`;
+        } else {
+          cycleElem.textContent = 'Annual Subscription';
+        }
       }
 
       function proceedToStripe(url) {
