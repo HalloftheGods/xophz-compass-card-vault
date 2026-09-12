@@ -3,6 +3,13 @@
 All notable changes to this WordPress plugin submodule will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [2026-09-12]
+
+### Changed
+- **Collector Show Bid Ingestion & Fallbacks**: Enhanced `submit_show_bid` in `includes/class-card-vault-community.php` to resolve target collectors via explicit `collectorUserId`, logged-in session, or primary administrator fallback, with safe default booth/contact fallbacks.
+- **Collector Items Timestamp Formatting**: Enhanced `get_collector_items` to output ISO-formatted `dateAdded` and `lastModified` strings directly from MySQL timestamps.
+- **Showcase Demo Fallback**: Enhanced `get_public_showcase` in `includes/class-card-vault-community.php` to resolve primary collector records when scanning demo or unauthenticated links.
+
 ## [2026-09-08]
 
 ### Added

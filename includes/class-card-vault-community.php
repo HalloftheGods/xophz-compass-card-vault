@@ -122,6 +122,8 @@ class Card_Vault_Community {
 				'marketPrice'      => (float) $row['market_price'],
 				'userNotes'        => $row['user_notes'],
 				'isPublicShowcase' => (bool) $row['is_public_showcase'],
+				'dateAdded'        => ! empty( $row['created_at'] ) ? gmdate( 'Y-m-d', strtotime( $row['created_at'] ) ) : gmdate( 'Y-m-d' ),
+				'lastModified'     => ! empty( $row['updated_at'] ) ? gmdate( 'Y-m-d', strtotime( $row['updated_at'] ) ) : gmdate( 'Y-m-d' ),
 			);
 		}
 
@@ -232,6 +234,13 @@ class Card_Vault_Community {
 		}
 		if ( ! $user ) {
 			$user = get_user_by( 'login', sanitize_user( $slug ) );
+		}
+
+		if ( ! $user && ( 'demo' === $slug || empty( $slug ) ) ) {
+			$admins = get_users( array( 'role' => 'administrator', 'number' => 1 ) );
+			if ( ! empty( $admins ) ) {
+				$user = $admins[0];
+			}
 		}
 
 		if ( ! $user ) {
@@ -665,11 +674,11 @@ class Card_Vault_Community {
 
 		$showcase_slug = ! empty( $payload['showcaseSlug'] ) ? sanitize_title( $payload['showcaseSlug'] ) : '';
 		$vendor_name = ! empty( $payload['vendorName'] ) ? sanitize_text_field( $payload['vendorName'] ) : '';
-		$vendor_booth = ! empty( $payload['vendorBooth'] ) ? sanitize_text_field( $payload['vendorBooth'] ) : '';
-		$vendor_phone = ! empty( $payload['vendorPhone'] ) ? sanitize_text_field( $payload['vendorPhone'] ) : '';
+		$vendor_booth = ! empty( $payload['vendorBooth'] ) ? sanitize_text_field( $payload['vendorBooth'] ) : 'Floor / Table';
+		$vendor_phone = ! empty( $payload['vendorPhone'] ) ? sanitize_text_field( $payload['vendorPhone'] ) : 'N/A';
 
-		if ( empty( $vendor_name ) || empty( $vendor_booth ) || empty( $vendor_phone ) ) {
-			return new WP_Error( 'missing_fields', __( 'Vendor Name, Booth Number, and Mobile Phone are required.', 'xophz-compass-card-vault' ), array( 'status' => 400 ) );
+		if ( empty( $vendor_name ) ) {
+			return new WP_Error( 'missing_fields', __( 'Vendor or buyer name is required.', 'xophz-compass-card-vault' ), array( 'status' => 400 ) );
 		}
 
 		$collector_user_id = 0;
@@ -680,8 +689,18 @@ class Card_Vault_Community {
 			if ( ! $user && is_numeric( $showcase_slug ) ) {
 				$user = get_user_by( 'id', (int) $showcase_slug );
 			}
+			if ( ! $user && ! empty( $showcase_slug ) ) {
+				$user = get_user_by( 'login', sanitize_user( $showcase_slug ) );
+			}
 			if ( $user ) {
 				$collector_user_id = $user->ID;
+			} elseif ( is_user_logged_in() ) {
+				$collector_user_id = get_current_user_id();
+			} else {
+				$admins = get_users( array( 'role' => 'administrator', 'number' => 1 ) );
+				if ( ! empty( $admins ) ) {
+					$collector_user_id = $admins[0]->ID;
+				}
 			}
 		}
 
