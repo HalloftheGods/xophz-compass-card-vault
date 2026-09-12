@@ -2,7 +2,7 @@
 /**
  * Plugin Name:       Xophz Card Vault
  * Description:       Offline-first Trade Desk, POS, optical grading, consignment accounting & WooCommerce product sync for My Card Vault.
- * Version:           26.9.12-1209
+ * Version:           26.9.12-1248
  * Author:            Hall of the Gods, Inc.
  * Category:          Command Deck
  * Group:             Ecosystem
@@ -13,7 +13,7 @@ if ( ! defined( 'WPINC' ) ) {
 	die;
 }
 
-define( 'XOPHZ_COMPASS_CARD_VAULT_VERSION', '26.9.12-1209' );
+define( 'XOPHZ_COMPASS_CARD_VAULT_VERSION', '26.9.12-1248' );
 define( 'XOPHZ_COMPASS_CARD_VAULT_PATH', plugin_dir_path( __FILE__ ) );
 define( 'XOPHZ_COMPASS_CARD_VAULT_URL', plugin_dir_url( __FILE__ ) );
 
