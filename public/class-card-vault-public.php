@@ -79,6 +79,9 @@ class Card_Vault_Public {
 			return $payload;
 		}
 
+		$payload['version']       = defined( 'XOPHZ_COMPASS_CARD_VAULT_VERSION' ) ? XOPHZ_COMPASS_CARD_VAULT_VERSION : '26.9.12-1209';
+		$payload['versionString'] = defined( 'XOPHZ_COMPASS_CARD_VAULT_VERSION' ) ? XOPHZ_COMPASS_CARD_VAULT_VERSION : '26.9.12-1209';
+
 		$user_id = ! empty( $payload['userId'] ) ? (int) $payload['userId'] : get_current_user_id();
 		$u = wp_get_current_user();
 		$roles = $u && $u->ID ? (array) $u->roles : array();
