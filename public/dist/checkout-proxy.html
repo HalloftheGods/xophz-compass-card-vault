@@ -277,7 +277,7 @@
         tierElem.textContent = tierNames[tier] || 'Card Vault License';
       }
       if (cycleElem) {
-        cycleElem.textContent = billing === 'lifetime' ? 'Lifetime Access' : 'Annual Subscription';
+        cycleElem.textContent = (tier === 'node' || tier === 'turnkey') ? 'Annual Managed Hosting' : (billing === 'lifetime' ? 'Lifetime Access' : 'Annual Subscription');
       }
 
       function proceedToStripe(url) {

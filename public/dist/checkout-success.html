@@ -356,7 +356,8 @@
       };
 
       if (tierBadge) {
-        tierBadge.textContent = (tierLabels[tier] || 'Card Vault License') + (billing === 'lifetime' || billing === 'turnkey' ? ' (Lifetime)' : ' (Annual)');
+        const isNode = tier === 'node' || tier === 'turnkey';
+        tierBadge.textContent = (tierLabels[tier] || 'Card Vault License') + (isNode ? ' (Annual Managed Hosting)' : (billing === 'lifetime' ? ' (Lifetime)' : ' (Annual)'));
       }
 
       // Default deterministic license key based on session
@@ -374,13 +375,11 @@
         'team-annual': 249.00,
         'team-lifetime': 599.00,
         'node-annual': 499.00,
-        'node-lifetime': 999.00,
         'turnkey-annual': 499.00,
-        'turnkey-lifetime': 999.00,
         'single': 99.00,
         'team': 249.00,
         'node': 499.00,
-        'turnkey': 999.00
+        'turnkey': 499.00
       };
 
       const keyPair = `${tier}-${billing}`;
