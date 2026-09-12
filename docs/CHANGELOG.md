@@ -11,7 +11,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - **WooCommerce My Account Vault Endpoint**: Registered `/my-account/card-vault` endpoint and menu tab in `includes/class-card-vault-community.php` enabling logged-in collectors to review their synced cloud inventory directly within WooCommerce My Account.
 
 ### Changed
-- **Compiled Frontend Assets**: Rebuilt frontend application bundling showcase QR code sharing modal, sticky header quick-share triggers, return navigation, and collection pagination into `public/dist/`.
+- **Compiled Frontend Assets**: Rebuilt frontend application bundling vendor interest checklist modal, checklist search filter, card interested badges, target offer cards preview, quick percentage offer buttons, and showcase QR code sharing modal into `public/dist/`.
 - **Frontend Dev Proxy API Settings Version Propagation**: Injected `version` and `versionString` matching `XOPHZ_COMPASS_CARD_VAULT_VERSION` (`26.9.12-1209`) in `filter_api_settings` within `public/class-card-vault-public.php` to guarantee active runtime plugin version is accessible to frontend consumers.
 - **Collector Show Bid Ingestion & Fallbacks**: Enhanced `submit_show_bid` in `includes/class-card-vault-community.php` to resolve target collectors via explicit `collectorUserId`, logged-in session, or primary administrator fallback, with safe default booth/contact fallbacks.
 - **Collector Items Timestamp Formatting**: Enhanced `get_collector_items` to output ISO-formatted `dateAdded` and `lastModified` strings directly from MySQL timestamps.
