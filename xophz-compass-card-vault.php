@@ -39,6 +39,7 @@ require_once XOPHZ_COMPASS_CARD_VAULT_PATH . 'includes/class-card-vault-catalog-
 require_once XOPHZ_COMPASS_CARD_VAULT_PATH . 'includes/class-card-vault-catalog-importer.php';
 require_once XOPHZ_COMPASS_CARD_VAULT_PATH . 'includes/class-card-vault-catalog-crawler.php';
 require_once XOPHZ_COMPASS_CARD_VAULT_PATH . 'includes/class-card-vault-sku-generator.php';
+require_once XOPHZ_COMPASS_CARD_VAULT_PATH . 'includes/class-card-vault-image-cache.php';
 require_once XOPHZ_COMPASS_CARD_VAULT_PATH . 'includes/class-card-vault-hookshot-bridge.php';
 require_once XOPHZ_COMPASS_CARD_VAULT_PATH . 'includes/class-card-vault-catalog-rest.php';
 require_once XOPHZ_COMPASS_CARD_VAULT_PATH . 'includes/class-card-vault-api.php';
@@ -69,6 +70,9 @@ class Card_Vault extends Xophz_Compass_Plugin_Base {
 	 * Initialize plugin components and queued hooks.
 	 */
 	public function init(): void {
+		// Initialize local WebP image cache directory & security rules
+		Card_Vault_Image_Cache::init();
+
 		// Initialize WooCommerce order hooks
 		Card_Vault_WC_Sync::init();
 

@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ## [2026-09-13]
 
 ### Added
+- **Isolated Local WebP Image Cache Engine**: Created `includes/class-card-vault-image-cache.php` providing high-speed disk caching of TCG catalog card images converted to WebP in `wp-content/uploads/card-vault-cache/images/`. Fully compatible with WPMU DEV managed hosting by using native WordPress core APIs (`wp_get_image_editor`, `wp_upload_dir`, `wp_remote_get`) without shell exec dependencies. Prevents WP Media Library and database bloat by avoiding `wp_posts` attachments and thumbnail multiplication.
+- **Card Image Cache REST Endpoints**: Registered `/catalog/cards/{id}/image`, `/catalog/cache/stats`, and `/catalog/cache/purge` in `includes/class-card-vault-catalog-rest.php` with 302 redirect support and disk cache telemetry.
 - **Mathematical Category & Group Catalog Crawler**: Created `includes/class-card-vault-catalog-crawler.php` providing automated multi-category discovery across 94 TCG categories on tcgcsv.com, mathematical pacing calculating exact delay intervals based on remaining sets and target hours, persistent queue state machine, self-healing cron execution, and activation-triggered population.
 - **Crawler REST Endpoints**: Registered `/catalog/categories` and `/catalog/crawler/*` (`status`, `start`, `pause`, `resume`, `step`, `reset`) in `includes/class-card-vault-catalog-rest.php` providing full queue diagnostics and interactive crawler controls.
 - **WP-CLI Crawl Command Suite**: Added `wp card-vault crawl` and `wp card-vault categories` in `includes/class-card-vault-catalog-cli.php` supporting foreground daemon loops, mathematical pacing status reports, and set-by-set telemetry.

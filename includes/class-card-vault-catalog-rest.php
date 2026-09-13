@@ -55,6 +55,45 @@ class Card_Vault_Catalog_REST {
 				)
 			);
 
+			// 2b. Card Image Resolver & WebP Cache Endpoint
+			register_rest_route(
+				$ns,
+				'/catalog/cards/(?P<id>[a-zA-Z0-9-_]+)/image',
+				array(
+					'methods'             => WP_REST_Server::READABLE,
+					'callback'            => array( __CLASS__, 'handle_card_image' ),
+					'permission_callback' => '__return_true',
+					'args'                => array(
+						'fallback_url' => array( 'sanitize_callback' => 'esc_url_raw' ),
+						'group'        => array( 'sanitize_callback' => 'absint' ),
+						'thumb'        => array( 'sanitize_callback' => 'rest_sanitize_boolean' ),
+						'redirect'     => array( 'sanitize_callback' => 'rest_sanitize_boolean' ),
+					),
+				)
+			);
+
+			// 2c. Image Cache Diagnostics
+			register_rest_route(
+				$ns,
+				'/catalog/cache/stats',
+				array(
+					'methods'             => WP_REST_Server::READABLE,
+					'callback'            => array( __CLASS__, 'handle_cache_stats' ),
+					'permission_callback' => array( __CLASS__, 'check_admin_permission' ),
+				)
+			);
+
+			// 2d. Image Cache Purge
+			register_rest_route(
+				$ns,
+				'/catalog/cache/purge',
+				array(
+					'methods'             => WP_REST_Server::CREATABLE,
+					'callback'            => array( __CLASS__, 'handle_cache_purge' ),
+					'permission_callback' => array( __CLASS__, 'check_admin_permission' ),
+				)
+			);
+
 			// 3. Barcode / SKU Resolver (Dual UPC & CV-* Single SKU)
 			register_rest_route(
 				$ns,
@@ -303,9 +342,103 @@ class Card_Vault_Catalog_REST {
 			return new WP_Error( 'card_not_found', __( 'Card not found.', 'xophz-compass-card-vault' ), array( 'status' => 404 ) );
 		}
 
+		$group_id   = (int) ( $card['group_id'] ?? 0 );
+		$cached_url = Card_Vault_Image_Cache::get_cached_image_url( $card['id'], $group_id );
+		if ( $cached_url ) {
+			$card['cached_image_url'] = $cached_url;
+		}
+
 		return rest_ensure_response( array(
 			'success' => true,
 			'card'    => $card,
+		) );
+	}
+
+	/**
+	 * Serve or transcode-and-cache card image in WebP format.
+	 *
+	 * Supports redirect mode (redirect=1) to let Nginx/CDN serve the static WebP
+	 * file directly on subsequent requests.
+	 *
+	 * @param WP_REST_Request $request
+	 * @return WP_REST_Response|WP_Error
+	 */
+	public static function handle_card_image( WP_REST_Request $request ) {
+		$id           = sanitize_text_field( (string) $request->get_param( 'id' ) );
+		$fallback_url = esc_url_raw( (string) ( $request->get_param( 'fallback_url' ) ?: '' ) );
+		$group_id     = absint( $request->get_param( 'group' ) ?: 0 );
+		$thumb        = (bool) $request->get_param( 'thumb' );
+		$redirect     = (bool) $request->get_param( 'redirect' );
+
+		// 1. Resolve group_id and fallback remote URL from SQLite catalog if omitted
+		$needs_resolution = empty( $fallback_url ) || $group_id <= 0;
+		if ( $needs_resolution ) {
+			$card = Card_Vault_Catalog_DB::get_card_by_id( $id );
+			$is_numeric_fallback = ! $card && is_numeric( $id );
+			if ( $is_numeric_fallback ) {
+				$card = Card_Vault_Catalog_DB::get_card_by_tcgplayer_id( (int) $id );
+			}
+			if ( $card ) {
+				$needs_group = $group_id <= 0 && ! empty( $card['group_id'] );
+				if ( $needs_group ) {
+					$group_id = (int) $card['group_id'];
+				}
+				$needs_url = empty( $fallback_url ) && ! empty( $card['image_url'] );
+				if ( $needs_url ) {
+					$fallback_url = $card['image_url'];
+				}
+			}
+		}
+
+		// 2. Check if already cached
+		$cached_url = Card_Vault_Image_Cache::get_cached_image_url( $id, $group_id, $thumb );
+		$has_cached = ! empty( $cached_url );
+		if ( $has_cached ) {
+			if ( $redirect ) {
+				wp_redirect( $cached_url, 302 );
+				exit;
+			}
+			return rest_ensure_response( array(
+				'success'   => true,
+				'cached'    => true,
+				'imageUrl'  => $cached_url,
+				'cardId'    => $id,
+			) );
+		}
+
+		// 3. If uncached and no remote image URL found, return 404
+		$is_url_missing = empty( $fallback_url );
+		if ( $is_url_missing ) {
+			return new WP_Error( 'image_not_found', __( 'No image source available for this card.', 'xophz-compass-card-vault' ), array( 'status' => 404 ) );
+		}
+
+		// 4. Download and transcode to WebP
+		$new_cached_url = Card_Vault_Image_Cache::cache_remote_image( $fallback_url, $id, $group_id, $thumb );
+		$has_transcoded = ! empty( $new_cached_url );
+		if ( $has_transcoded ) {
+			if ( $redirect ) {
+				wp_redirect( $new_cached_url, 302 );
+				exit;
+			}
+			return rest_ensure_response( array(
+				'success'   => true,
+				'cached'    => true,
+				'imageUrl'  => $new_cached_url,
+				'cardId'    => $id,
+			) );
+		}
+
+		// 5. Fallback to remote URL if transcoding/caching was not possible
+		if ( $redirect ) {
+			wp_redirect( $fallback_url, 302 );
+			exit;
+		}
+
+		return rest_ensure_response( array(
+			'success'   => true,
+			'cached'    => false,
+			'imageUrl'  => $fallback_url,
+			'cardId'    => $id,
 		) );
 	}
 
@@ -584,6 +717,37 @@ class Card_Vault_Catalog_REST {
 			'success' => true,
 			'message' => __( 'Crawler queue reset to idle.', 'xophz-compass-card-vault' ),
 			'crawler' => $status,
+		) );
+	}
+
+	/**
+	 * Retrieve disk cache usage metrics.
+	 *
+	 * @param WP_REST_Request $request
+	 * @return WP_REST_Response
+	 */
+	public static function handle_cache_stats( WP_REST_Request $request ): WP_REST_Response {
+		$stats = Card_Vault_Image_Cache::get_cache_stats();
+
+		return rest_ensure_response( array(
+			'success' => true,
+			'stats'   => $stats,
+		) );
+	}
+
+	/**
+	 * Purge local image cache.
+	 *
+	 * @param WP_REST_Request $request
+	 * @return WP_REST_Response
+	 */
+	public static function handle_cache_purge( WP_REST_Request $request ): WP_REST_Response {
+		$result = Card_Vault_Image_Cache::purge_cache();
+
+		return rest_ensure_response( array(
+			'success' => true,
+			'message' => __( 'Image cache purged.', 'xophz-compass-card-vault' ),
+			'result'  => $result,
 		) );
 	}
 }

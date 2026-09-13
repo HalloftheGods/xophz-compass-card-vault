@@ -1,5 +1,5 @@
 {
-  "name": "My Card Vault: Pokemon TCG Show OS",
+  "name": "My Card Vault",
   "short_name": "Card Vault",
   "description": "High-speed Pokemon TCG inventory, live market pricing, and show POS.",
   "start_url": "./",

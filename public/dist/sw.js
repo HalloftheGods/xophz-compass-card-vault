@@ -148,13 +148,19 @@ self.addEventListener('fetch', (event) => {
         }
 
         // Cache miss: network fetch with cache population
-        return fetch(request).then((networkResponse) => {
-          if (networkResponse && networkResponse.status === 200) {
-            const clone = networkResponse.clone();
-            caches.open(CACHE_NAME).then((cache) => cache.put(request, clone));
-          }
-          return networkResponse;
-        });
+        return fetch(request)
+          .then((networkResponse) => {
+            if (networkResponse && networkResponse.status === 200) {
+              const clone = networkResponse.clone();
+              caches.open(CACHE_NAME).then((cache) => cache.put(request, clone));
+            }
+            return networkResponse;
+          })
+          .catch(async () => {
+            const fallback = await caches.match(request);
+            if (fallback) return fallback;
+            return new Response('', { status: 504, statusText: 'Gateway Timeout' });
+          });
       })
     );
     return;
