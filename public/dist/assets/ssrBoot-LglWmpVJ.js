@@ -1,0 +1,1 @@
+import{Gn as e,Sr as t,_r as n,br as r}from"./VSheet-CdCV509e.js";function i(){let i=r(!1);return e(()=>{window.requestAnimationFrame(()=>{i.value=!0})}),{ssrBootStyles:t(()=>i.value?void 0:{transition:`none !important`}),isBooted:n(i)}}export{i as t};
