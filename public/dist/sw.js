@@ -68,6 +68,17 @@ self.addEventListener('fetch', (event) => {
 
   const url = new URL(request.url);
 
+  // Bypass Vite dev server internal paths, HMR, and unbundled modules
+  const isViteInternal = url.pathname.startsWith('/@') ||
+    url.pathname.includes('/node_modules/.vite/') ||
+    url.pathname.includes('/src/') ||
+    url.searchParams.has('t') ||
+    url.searchParams.has('v');
+
+  if (isViteInternal) {
+    return;
+  }
+
   // Bypass API endpoints from aggressive offline cache
   const isApiRequest = url.pathname.includes('/wp-json/') ||
     url.pathname.includes('/api/') ||
@@ -123,17 +134,27 @@ self.addEventListener('fetch', (event) => {
   if (isStaticAsset) {
     event.respondWith(
       caches.match(request).then((cachedResponse) => {
-        const fetchPromise = fetch(request)
-          .then((networkResponse) => {
-            if (networkResponse && networkResponse.status === 200) {
-              const clone = networkResponse.clone();
-              caches.open(CACHE_NAME).then((cache) => cache.put(request, clone));
-            }
-            return networkResponse;
-          })
-          .catch(() => cachedResponse);
+        if (cachedResponse) {
+          // Stale-while-revalidate background refresh
+          fetch(request)
+            .then((networkResponse) => {
+              if (networkResponse && networkResponse.status === 200) {
+                const clone = networkResponse.clone();
+                caches.open(CACHE_NAME).then((cache) => cache.put(request, clone));
+              }
+            })
+            .catch(() => {});
+          return cachedResponse;
+        }
 
-        return cachedResponse || fetchPromise;
+        // Cache miss: network fetch with cache population
+        return fetch(request).then((networkResponse) => {
+          if (networkResponse && networkResponse.status === 200) {
+            const clone = networkResponse.clone();
+            caches.open(CACHE_NAME).then((cache) => cache.put(request, clone));
+          }
+          return networkResponse;
+        });
       })
     );
     return;
@@ -149,7 +170,11 @@ self.addEventListener('fetch', (event) => {
         }
         return networkResponse;
       })
-      .catch(() => caches.match(request))
+      .catch(async () => {
+        const fallback = await caches.match(request);
+        if (fallback) return fallback;
+        return new Response('Network error', { status: 503, statusText: 'Service Unavailable' });
+      })
   );
 });
 
