@@ -548,8 +548,16 @@ class Card_Vault_Admin {
 					</div>
 				</div>
 
-				<div style="display: flex; gap: 10px;">
-					<a href="<?php echo esc_url( $app_url ); ?>" target="_blank" class="button button-primary" style="background: #0284c7; border-color: #0369a1; color: #ffffff; text-decoration: none; border-radius: 8px;">
+				<div style="display: flex; flex-wrap: wrap; gap: 10px;">
+					<a href="<?php echo esc_url( add_query_arg( 'action', 'add', $app_url ) ); ?>" target="_blank" class="button button-primary" style="background: #059669; border-color: #047857; color: #ffffff; text-decoration: none; border-radius: 8px; font-weight: 600; display: inline-flex; align-items: center; gap: 4px;">
+						<span class="dashicons dashicons-plus" style="font-size: 16px; width: 16px; height: 16px; line-height: 16px;"></span>
+						<?php esc_html_e( 'Add to Collection', 'xophz-compass-card-vault' ); ?>
+					</a>
+					<a href="<?php echo esc_url( add_query_arg( 'action', 'import', $app_url ) ); ?>" target="_blank" class="button" style="background: #d97706; border-color: #b45309; color: #ffffff; text-decoration: none; border-radius: 8px; font-weight: 600; display: inline-flex; align-items: center; gap: 4px;">
+						<span class="dashicons dashicons-upload" style="font-size: 16px; width: 16px; height: 16px; line-height: 16px;"></span>
+						<?php esc_html_e( 'Import More (CSV)', 'xophz-compass-card-vault' ); ?>
+					</a>
+					<a href="<?php echo esc_url( $app_url ); ?>" target="_blank" class="button" style="background: #0284c7; border-color: #0369a1; color: #ffffff; text-decoration: none; border-radius: 8px;">
 						<?php esc_html_e( 'Open Card Vault', 'xophz-compass-card-vault' ); ?> &rarr;
 					</a>
 					<?php if ( ! empty( $items ) ) : ?>
@@ -564,7 +572,10 @@ class Card_Vault_Admin {
 			<?php if ( empty( $items ) ) : ?>
 				<div style="padding: 24px; text-align: center; color: #94a3b8; font-size: 13px;">
 					<p style="margin-bottom: 8px;"><?php esc_html_e( 'No cards synced to this WordPress profile yet.', 'xophz-compass-card-vault' ); ?></p>
-					<p style="font-size: 12px; color: #64748b;"><?php esc_html_e( 'Open Card Vault, log in with your WordPress account, and click "Push to Cloud" to sync your binder.', 'xophz-compass-card-vault' ); ?></p>
+					<p style="font-size: 12px; color: #64748b; margin-bottom: 16px;"><?php esc_html_e( 'Open Card Vault, log in with your WordPress account, and click "Push to Cloud" to sync your binder.', 'xophz-compass-card-vault' ); ?></p>
+					<a href="<?php echo esc_url( add_query_arg( 'action', 'add', $app_url ) ); ?>" target="_blank" class="button button-primary" style="background: #059669; border-color: #047857; color: #ffffff; text-decoration: none; border-radius: 8px; font-weight: 600;">
+						+ <?php esc_html_e( 'Add Your First Cards', 'xophz-compass-card-vault' ); ?>
+					</a>
 				</div>
 			<?php else : ?>
 				<div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 12px; max-height: 480px; overflow-y: auto; padding: 4px;">

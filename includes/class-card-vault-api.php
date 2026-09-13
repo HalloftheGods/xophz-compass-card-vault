@@ -1186,33 +1186,71 @@ class Card_Vault_API {
 		if ( empty( $username ) || empty( $password ) ) {
 			return new WP_REST_Response( array(
 				'success' => false,
-				'error'   => __( 'Username and password are required.', 'xophz-compass-card-vault' ),
+				'error'   => __( 'Username/email and password are required.', 'xophz-compass-card-vault' ),
 			), 400 );
 		}
 
-		// Support email or username lookup
-		$auth_login = $username;
-		if ( is_email( $username ) ) {
-			$user_by_email = get_user_by( 'email', $username );
-			if ( $user_by_email ) {
-				$auth_login = $user_by_email->user_login;
+		// Ensure centralized Compass Auth API is loaded
+		if ( ! class_exists( 'Xophz_Compass_Auth_API' ) ) {
+			$compass_auth = dirname( dirname( __DIR__ ) ) . '/xophz-compass/includes/class-xophz-compass-auth-api.php';
+			if ( file_exists( $compass_auth ) ) {
+				require_once $compass_auth;
 			}
 		}
 
-		// Direct username and password authentication bypassing wp-login.php Turnstile captcha
-		$user = wp_authenticate_username_password( null, $auth_login, $password );
+		if ( class_exists( 'Xophz_Compass_Auth_API' ) ) {
+			$auth_result = Xophz_Compass_Auth_API::authenticate_credentials( $username, $password );
+			if ( is_wp_error( $auth_result ) ) {
+				$error_data = $auth_result->get_error_data();
+				$status     = is_array( $error_data ) && isset( $error_data['status'] ) ? (int) $error_data['status'] : 401;
 
-		if ( is_wp_error( $user ) ) {
-			return new WP_REST_Response( array(
-				'success' => false,
-				'error'   => __( 'Invalid credentials. Please check your username and password.', 'xophz-compass-card-vault' ),
-			), 401 );
+				return new WP_REST_Response( array(
+					'success' => false,
+					'error'   => wp_strip_all_tags( $auth_result->get_error_message() ),
+					'code'    => $auth_result->get_error_code(),
+				), $status );
+			}
+
+			$session = Xophz_Compass_Auth_API::establish_session( $auth_result, $remember );
+			$user    = $session['user'];
+			$nonce   = $session['nonce'];
+		} else {
+			// Standalone fallback: resolve by email, login, or slug
+			$user = is_email( $username ) ? get_user_by( 'email', $username ) : get_user_by( 'login', $username );
+			if ( ! $user && ! is_email( $username ) ) {
+				$user = get_user_by( 'email', $username );
+			}
+			if ( ! $user ) {
+				$user = get_user_by( 'slug', sanitize_title( $username ) );
+			}
+			if ( ! $user ) {
+				return new WP_REST_Response( array(
+					'success' => false,
+					'error'   => sprintf( __( 'User "%s" not found. Please check your username or email.', 'xophz-compass-card-vault' ), esc_html( $username ) ),
+				), 401 );
+			}
+
+			$password_candidates = array( $password, stripslashes( $password ), htmlspecialchars_decode( $password, ENT_QUOTES ) );
+			$password_matched    = false;
+			foreach ( array_unique( $password_candidates ) as $cand ) {
+				if ( wp_check_password( $cand, $user->user_pass, $user->ID ) ) {
+					$password_matched = true;
+					break;
+				}
+			}
+
+			if ( ! $password_matched ) {
+				return new WP_REST_Response( array(
+					'success' => false,
+					'error'   => __( 'Incorrect password. Please verify your credentials and try again.', 'xophz-compass-card-vault' ),
+				), 401 );
+			}
+
+			wp_set_current_user( $user->ID, $user->user_login );
+			wp_set_auth_cookie( $user->ID, $remember, is_ssl() );
+			do_action( 'wp_login', $user->user_login, $user );
+			$nonce = wp_create_nonce( 'wp_rest' );
 		}
-
-		// Establish logged-in WordPress session
-		wp_set_current_user( $user->ID, $user->user_login );
-		wp_set_auth_cookie( $user->ID, $remember, is_ssl() );
-		do_action( 'wp_login', $user->user_login, $user );
 
 		// Determine user role and linked consignor
 		$user_id   = $user->ID;
@@ -1229,11 +1267,11 @@ class Card_Vault_API {
 
 		return new WP_REST_Response( array(
 			'success' => true,
-			'nonce'   => wp_create_nonce( 'wp_rest' ),
+			'nonce'   => $nonce,
 			'user'    => array(
 				'id'          => $user_id,
 				'userLogin'   => $user->user_login,
-				'displayName' => $user->display_name,
+				'displayName' => ! empty( $user->display_name ) ? $user->display_name : $user->user_login,
 				'email'       => $user->user_email,
 				'role'        => $role,
 				'consignorId' => $consignor ? $consignor['consignor_id'] : null,

@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ## [2026-09-12]
 
 ### Added
+- **Centralized Compass Auth Integration**: Updated `/auth/login` in `includes/class-card-vault-api.php` to integrate with `Xophz_Compass_Auth_API`, providing multi-representation password verification, captcha stripping, and accurate error pass-through.
+- **WordPress Profile & WooCommerce Account Add to Collection Buttons**: Added prominent "+ Add to Collection" and "Import More (CSV)" action buttons to both the WordPress user profile collection view (`wp-admin/profile.php`) and the WooCommerce My Account collection page (`/my-account/card-vault`), routing users directly into the card intake and CSV import workflow.
 - **In-App WordPress Authentication REST Endpoints**: Registered `/auth/login`, `/auth/logout`, and `/auth/me` in `includes/class-card-vault-api.php` utilizing `wp_authenticate_username_password()`, `wp_set_current_user()`, and `wp_set_auth_cookie()` with direct username or email fallback, cleanly bypassing Turnstile CAPTCHA on `wp-login.php`.
 - **WordPress Admin Profile Collection Display**: Added `show_user_profile` and `edit_user_profile` hooks in `admin/class-card-vault-admin.php` rendering a dedicated dark-mode Card Vault Collection table with total card count, estimated raw portfolio value, and a 24-card preview grid on `wp-admin/profile.php`.
 - **WooCommerce My Account Vault Endpoint**: Registered `/my-account/card-vault` endpoint and menu tab in `includes/class-card-vault-community.php` enabling logged-in collectors to review their synced cloud inventory directly within WooCommerce My Account.

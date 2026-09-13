@@ -913,7 +913,13 @@ class Card_Vault_Community {
 					<h3 style="margin: 0 0 4px 0; color: #f8fafc; font-size: 18px;"><?php esc_html_e( 'My Card Vault Collection', 'xophz-compass-card-vault' ); ?></h3>
 					<div style="font-size: 12px; color: #94a3b8;"><?php printf( esc_html__( 'Portfolio: %s cards | Est. Value: $%s', 'xophz-compass-card-vault' ), number_format( $total_cards ), number_format( $total_value, 2 ) ); ?></div>
 				</div>
-				<div style="display: flex; gap: 10px;">
+				<div style="display: flex; flex-wrap: wrap; gap: 10px;">
+					<a href="<?php echo esc_url( add_query_arg( 'action', 'add', $app_url ) ); ?>" target="_blank" class="button" style="background: #059669; color: #ffffff; text-decoration: none; border-radius: 8px; font-weight: 600;">
+						+ <?php esc_html_e( 'Add to Collection', 'xophz-compass-card-vault' ); ?>
+					</a>
+					<a href="<?php echo esc_url( add_query_arg( 'action', 'import', $app_url ) ); ?>" target="_blank" class="button" style="background: #d97706; color: #ffffff; text-decoration: none; border-radius: 8px; font-weight: 600;">
+						<?php esc_html_e( 'Import More (CSV)', 'xophz-compass-card-vault' ); ?>
+					</a>
 					<a href="<?php echo esc_url( $app_url ); ?>" target="_blank" class="button" style="background: #0284c7; color: #ffffff; text-decoration: none; border-radius: 8px; font-weight: 600;">
 						<?php esc_html_e( 'Open Card Vault', 'xophz-compass-card-vault' ); ?> &rarr;
 					</a>
@@ -928,7 +934,10 @@ class Card_Vault_Community {
 			<?php if ( empty( $items ) ) : ?>
 				<div style="text-align: center; padding: 32px 16px; color: #94a3b8;">
 					<p style="margin-bottom: 8px;"><?php esc_html_e( 'No cards synced yet.', 'xophz-compass-card-vault' ); ?></p>
-					<p style="font-size: 13px; color: #64748b;"><?php esc_html_e( 'Launch Card Vault and click "Push to Cloud" to sync your physical card inventory.', 'xophz-compass-card-vault' ); ?></p>
+					<p style="font-size: 13px; color: #64748b; margin-bottom: 16px;"><?php esc_html_e( 'Launch Card Vault and click "Push to Cloud" to sync your physical card inventory.', 'xophz-compass-card-vault' ); ?></p>
+					<a href="<?php echo esc_url( add_query_arg( 'action', 'add', $app_url ) ); ?>" target="_blank" class="button" style="background: #059669; color: #ffffff; text-decoration: none; border-radius: 8px; font-weight: 600;">
+						+ <?php esc_html_e( 'Add Your First Cards', 'xophz-compass-card-vault' ); ?>
+					</a>
 				</div>
 			<?php else : ?>
 				<div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 12px; max-height: 520px; overflow-y: auto;">
