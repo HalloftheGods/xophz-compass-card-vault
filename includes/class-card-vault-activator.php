@@ -196,7 +196,12 @@ class Card_Vault_Activator {
 			Card_Vault_Catalog_DB::ensure_database();
 		}
 
-		// 9. Flush rewrite rules for /card-vault endpoint
+		// 9. Initialize catalog crawler & mathematical database builder
+		if ( class_exists( 'Card_Vault_Catalog_Crawler' ) ) {
+			Card_Vault_Catalog_Crawler::init_on_activation();
+		}
+
+		// 10. Flush rewrite rules for /card-vault endpoint
 		if ( class_exists( 'Card_Vault_Public' ) ) {
 			$public = new Card_Vault_Public();
 			$public->register_rewrites();

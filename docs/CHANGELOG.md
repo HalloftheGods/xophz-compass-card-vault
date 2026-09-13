@@ -6,6 +6,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ## [2026-09-13]
 
 ### Added
+- **Mathematical Category & Group Catalog Crawler**: Created `includes/class-card-vault-catalog-crawler.php` providing automated multi-category discovery across 94 TCG categories on tcgcsv.com, mathematical pacing calculating exact delay intervals based on remaining sets and target hours, persistent queue state machine, self-healing cron execution, and activation-triggered population.
+- **Crawler REST Endpoints**: Registered `/catalog/categories` and `/catalog/crawler/*` (`status`, `start`, `pause`, `resume`, `step`, `reset`) in `includes/class-card-vault-catalog-rest.php` providing full queue diagnostics and interactive crawler controls.
+- **WP-CLI Crawl Command Suite**: Added `wp card-vault crawl` and `wp card-vault categories` in `includes/class-card-vault-catalog-cli.php` supporting foreground daemon loops, mathematical pacing status reports, and set-by-set telemetry.
 - **SQLite Master Catalog Engine**: Created `includes/class-card-vault-catalog-db.php` providing high-performance local SQLite storage (`cards.db`) with Write-Ahead Logging (WAL mode), 16MB page cache, B-Tree indexes, and FTS5 full-text search with automatic sync triggers.
 - **Smart Card Number Normalization**: Created `includes/class-card-vault-number-normalizer.php` decomposing card numbers (e.g. `004/102`, `199/165`, `TG01/TG30`, `OP05-001`), precomputing full-text search variant vectors, and sanitizing user queries to eliminate FTS5 syntax errors.
 - **TCG CSV Ingestion & Snapshot Sync**: Created `includes/class-card-vault-catalog-importer.php` supporting dual-mode operations: Hub Mode (ingesting daily CSV dumps from tcgcsv.com and building compressed snapshots) and BlackBox Client Mode (atomic download and zero-downtime database hydration).

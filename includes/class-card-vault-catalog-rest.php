@@ -87,6 +87,83 @@ class Card_Vault_Catalog_REST {
 					'permission_callback' => array( __CLASS__, 'check_admin_permission' ),
 				)
 			);
+
+			// 6. Enumerate All TCG Categories
+			register_rest_route(
+				$ns,
+				'/catalog/categories',
+				array(
+					'methods'             => WP_REST_Server::READABLE,
+					'callback'            => array( __CLASS__, 'handle_get_categories' ),
+					'permission_callback' => '__return_true',
+				)
+			);
+
+			// 7. Crawler Live Telemetry & Progress
+			register_rest_route(
+				$ns,
+				'/catalog/crawler/status',
+				array(
+					'methods'             => WP_REST_Server::READABLE,
+					'callback'            => array( __CLASS__, 'handle_crawler_status' ),
+					'permission_callback' => '__return_true',
+				)
+			);
+
+			// 8. Crawler Control: Start / Configure
+			register_rest_route(
+				$ns,
+				'/catalog/crawler/start',
+				array(
+					'methods'             => WP_REST_Server::CREATABLE,
+					'callback'            => array( __CLASS__, 'handle_crawler_start' ),
+					'permission_callback' => array( __CLASS__, 'check_admin_permission' ),
+				)
+			);
+
+			// 9. Crawler Control: Pause
+			register_rest_route(
+				$ns,
+				'/catalog/crawler/pause',
+				array(
+					'methods'             => WP_REST_Server::CREATABLE,
+					'callback'            => array( __CLASS__, 'handle_crawler_pause' ),
+					'permission_callback' => array( __CLASS__, 'check_admin_permission' ),
+				)
+			);
+
+			// 10. Crawler Control: Resume
+			register_rest_route(
+				$ns,
+				'/catalog/crawler/resume',
+				array(
+					'methods'             => WP_REST_Server::CREATABLE,
+					'callback'            => array( __CLASS__, 'handle_crawler_resume' ),
+					'permission_callback' => array( __CLASS__, 'check_admin_permission' ),
+				)
+			);
+
+			// 11. Crawler Control: Single Step Immediate
+			register_rest_route(
+				$ns,
+				'/catalog/crawler/step',
+				array(
+					'methods'             => WP_REST_Server::CREATABLE,
+					'callback'            => array( __CLASS__, 'handle_crawler_step' ),
+					'permission_callback' => array( __CLASS__, 'check_admin_permission' ),
+				)
+			);
+
+			// 12. Crawler Control: Reset
+			register_rest_route(
+				$ns,
+				'/catalog/crawler/reset',
+				array(
+					'methods'             => WP_REST_Server::CREATABLE,
+					'callback'            => array( __CLASS__, 'handle_crawler_reset' ),
+					'permission_callback' => array( __CLASS__, 'check_admin_permission' ),
+				)
+			);
 		}
 	}
 
@@ -138,7 +215,7 @@ class Card_Vault_Catalog_REST {
 	 * @return bool|WP_Error
 	 */
 	public static function check_admin_permission( WP_REST_Request $request ) {
-		if ( current_user_can( 'manage_options' ) ) {
+		if ( current_user_can( 'manage_options' ) || current_user_can( 'manage_card_vault' ) || current_user_can( 'manage_woocommerce' ) ) {
 			return true;
 		}
 
@@ -378,6 +455,135 @@ class Card_Vault_Catalog_REST {
 			'result'      => $result,
 			'elapsed_sec' => $result['elapsed_sec'] ?? 0,
 			'status'      => $status,
+		) );
+	}
+
+	/**
+	 * Get list of all available TCG categories.
+	 *
+	 * @param WP_REST_Request $request
+	 * @return WP_REST_Response
+	 */
+	public static function handle_get_categories( WP_REST_Request $request ): WP_REST_Response {
+		$force = (bool) $request->get_param( 'force' );
+		$categories = Card_Vault_Catalog_Crawler::get_available_categories( $force );
+
+		return rest_ensure_response( array(
+			'success'    => true,
+			'categories' => $categories,
+			'count'      => count( $categories ),
+		) );
+	}
+
+	/**
+	 * Get live crawler status, progress metrics, and queue telemetry.
+	 *
+	 * @param WP_REST_Request $request
+	 * @return WP_REST_Response
+	 */
+	public static function handle_crawler_status( WP_REST_Request $request ): WP_REST_Response {
+		$auto_advance = $request->get_param( 'auto_advance' ) !== '0';
+		$status = Card_Vault_Catalog_Crawler::get_status( $auto_advance );
+
+		return rest_ensure_response( array(
+			'success' => true,
+			'crawler' => $status,
+		) );
+	}
+
+	/**
+	 * Start or reconfigure catalog crawler with mathematical pacing.
+	 *
+	 * @param WP_REST_Request $request
+	 * @return WP_REST_Response
+	 */
+	public static function handle_crawler_start( WP_REST_Request $request ): WP_REST_Response {
+		$config = array();
+
+		if ( $request->get_param( 'target_hours' ) ) {
+			$config['target_hours'] = (float) $request->get_param( 'target_hours' );
+		}
+		if ( $request->get_param( 'delay_seconds' ) ) {
+			$config['delay_seconds'] = (int) $request->get_param( 'delay_seconds' );
+		}
+		if ( $request->get_param( 'category_ids' ) && is_array( $request->get_param( 'category_ids' ) ) ) {
+			$config['category_ids'] = $request->get_param( 'category_ids' );
+		}
+		if ( $request->get_param( 'force' ) ) {
+			$config['force'] = (bool) $request->get_param( 'force' );
+		}
+
+		$status = Card_Vault_Catalog_Crawler::start_crawler( $config );
+
+		return rest_ensure_response( array(
+			'success' => true,
+			'message' => __( 'Crawler initialized and started.', 'xophz-compass-card-vault' ),
+			'crawler' => $status,
+		) );
+	}
+
+	/**
+	 * Pause active catalog crawler.
+	 *
+	 * @param WP_REST_Request $request
+	 * @return WP_REST_Response
+	 */
+	public static function handle_crawler_pause( WP_REST_Request $request ): WP_REST_Response {
+		$status = Card_Vault_Catalog_Crawler::pause_crawler();
+
+		return rest_ensure_response( array(
+			'success' => true,
+			'message' => __( 'Crawler paused.', 'xophz-compass-card-vault' ),
+			'crawler' => $status,
+		) );
+	}
+
+	/**
+	 * Resume paused catalog crawler.
+	 *
+	 * @param WP_REST_Request $request
+	 * @return WP_REST_Response
+	 */
+	public static function handle_crawler_resume( WP_REST_Request $request ): WP_REST_Response {
+		$status = Card_Vault_Catalog_Crawler::resume_crawler();
+
+		return rest_ensure_response( array(
+			'success' => true,
+			'message' => __( 'Crawler resumed.', 'xophz-compass-card-vault' ),
+			'crawler' => $status,
+		) );
+	}
+
+	/**
+	 * Immediately execute next pending crawler group.
+	 *
+	 * @param WP_REST_Request $request
+	 * @return WP_REST_Response
+	 */
+	public static function handle_crawler_step( WP_REST_Request $request ): WP_REST_Response {
+		$result = Card_Vault_Catalog_Crawler::process_next_step();
+		$status = Card_Vault_Catalog_Crawler::get_status( false );
+
+		return rest_ensure_response( array(
+			'success' => $result['success'] ?? false,
+			'step'    => $result,
+			'crawler' => $status,
+		) );
+	}
+
+	/**
+	 * Reset catalog crawler state and clear queue.
+	 *
+	 * @param WP_REST_Request $request
+	 * @return WP_REST_Response
+	 */
+	public static function handle_crawler_reset( WP_REST_Request $request ): WP_REST_Response {
+		$status = Card_Vault_Catalog_Crawler::reset_crawler();
+
+		return rest_ensure_response( array(
+			'success' => true,
+			'message' => __( 'Crawler queue reset to idle.', 'xophz-compass-card-vault' ),
+			'crawler' => $status,
 		) );
 	}
 }

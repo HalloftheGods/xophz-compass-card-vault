@@ -286,6 +286,206 @@ class Card_Vault_Catalog_CLI {
 		$size_mb = round( filesize( $res ) / ( 1024 * 1024 ), 2 );
 		WP_CLI::success( "Exported compressed snapshot to {$res} ({$size_mb} MB)." );
 	}
+
+	/**
+	 * List all available TCG categories from tcgcsv.com.
+	 *
+	 * ## EXAMPLES
+	 *
+	 *     wp card-vault categories
+	 */
+	public function categories( $args, $assoc_args ) {
+		$categories = Card_Vault_Catalog_Crawler::get_available_categories();
+		if ( empty( $categories ) ) {
+			WP_CLI::error( 'Could not fetch categories list from tcgcsv.com.' );
+		}
+
+		WP_CLI::log( sprintf( 'Found %d TCG categories on tcgcsv.com:', count( $categories ) ) );
+		$rows = array();
+		foreach ( $categories as $cat ) {
+			$rows[] = array(
+				'ID'   => $cat['categoryId'],
+				'Name' => $cat['name'],
+				'Title'=> $cat['displayName'],
+			);
+		}
+		WP_CLI\Utils\format_items( 'table', $rows, array( 'ID', 'Name', 'Title' ) );
+	}
+
+	/**
+	 * Mathematically paced category and group database builder crawler.
+	 *
+	 * ## OPTIONS
+	 *
+	 * [--target-hours=<hours>]
+	 * : Target completion duration in hours (default: 24).
+	 *
+	 * [--delay-seconds=<sec>]
+	 * : Fixed throttle delay between sets in seconds.
+	 *
+	 * [--categories=<ids>]
+	 * : Comma-separated category IDs to target (default: all categories).
+	 *
+	 * [--daemon]
+	 * : Run continuous foreground runner loop until completion.
+	 *
+	 * [--status]
+	 * : Show current crawler progress, mathematical metrics, and ETA.
+	 *
+	 * [--step]
+	 * : Immediately execute the next group in the queue.
+	 *
+	 * [--pause]
+	 * : Pause active crawler.
+	 *
+	 * [--resume]
+	 * : Resume paused crawler.
+	 *
+	 * [--reset]
+	 * : Reset queue and crawler state to idle.
+	 *
+	 * [--force]
+	 * : Re-import already synced sets.
+	 *
+	 * ## EXAMPLES
+	 *
+	 *     wp card-vault crawl --status
+	 *     wp card-vault crawl --target-hours=24
+	 *     wp card-vault crawl --delay-seconds=120 --daemon
+	 *     wp card-vault crawl --categories=3,1,2 --target-hours=12
+	 */
+	public function crawl( $args, $assoc_args ) {
+		// 1. Status action
+		if ( ! empty( $assoc_args['status'] ) ) {
+			$status = Card_Vault_Catalog_Crawler::get_status( false );
+			WP_CLI::log( '=== Card Vault Catalog Crawler Status ===' );
+			WP_CLI::log( 'Status:         ' . strtoupper( $status['status'] ) );
+			WP_CLI::log( sprintf( 'Progress:       %.1f%% (%d / %d sets completed, %d remaining)',
+				$status['progress_percentage'],
+				$status['completed_groups'],
+				$status['total_groups'],
+				$status['remaining_groups']
+			) );
+			WP_CLI::log( sprintf( 'Cards Ingested: %s cards', number_format( $status['imported_cards'] ) ) );
+			WP_CLI::log( sprintf( 'Pacing Delay:   %d seconds (%.1f min) between sets', $status['delay_seconds'], $status['delay_seconds'] / 60 ) );
+			WP_CLI::log( sprintf( 'Target Hours:   %.2f hours', $status['target_hours'] ) );
+			if ( ! empty( $status['eta_timestamp'] ) ) {
+				WP_CLI::log( 'Projected ETA:  ' . date( 'Y-m-d H:i:s T', $status['eta_timestamp'] ) );
+			}
+			if ( ! empty( $status['current_group_name'] ) ) {
+				WP_CLI::log( sprintf( 'Current Target: [%s] %s (ID: %d)',
+					$status['current_category_name'],
+					$status['current_group_name'],
+					$status['current_group_id']
+				) );
+			}
+			if ( ! empty( $status['seconds_until_next'] ) ) {
+				WP_CLI::log( sprintf( 'Next Run in:    %d seconds', $status['seconds_until_next'] ) );
+			}
+			return;
+		}
+
+		// 2. Pause action
+		if ( ! empty( $assoc_args['pause'] ) ) {
+			$res = Card_Vault_Catalog_Crawler::pause_crawler();
+			WP_CLI::success( 'Crawler paused.' );
+			return;
+		}
+
+		// 3. Resume action
+		if ( ! empty( $assoc_args['resume'] ) ) {
+			$res = Card_Vault_Catalog_Crawler::resume_crawler();
+			WP_CLI::success( 'Crawler resumed.' );
+			return;
+		}
+
+		// 4. Reset action
+		if ( ! empty( $assoc_args['reset'] ) ) {
+			$res = Card_Vault_Catalog_Crawler::reset_crawler();
+			WP_CLI::success( 'Crawler state and queue reset.' );
+			return;
+		}
+
+		// 5. Single step action
+		if ( ! empty( $assoc_args['step'] ) ) {
+			$res = Card_Vault_Catalog_Crawler::process_next_step();
+			if ( $res['success'] ) {
+				WP_CLI::success( sprintf( 'Ingested %s: %d cards (%d sets remaining).',
+					$res['group_name'] ?? 'Set',
+					$res['imported_cards'] ?? 0,
+					$res['remaining_groups'] ?? 0
+				) );
+			} else {
+				WP_CLI::error( 'Step failed: ' . ( $res['message'] ?? 'Unknown error' ) );
+			}
+			return;
+		}
+
+		// 6. Start / Configure Crawler
+		$config = array();
+		if ( isset( $assoc_args['target-hours'] ) ) {
+			$config['target_hours'] = (float) $assoc_args['target-hours'];
+		}
+		if ( isset( $assoc_args['delay-seconds'] ) ) {
+			$config['delay_seconds'] = (int) $assoc_args['delay-seconds'];
+		}
+		if ( isset( $assoc_args['categories'] ) ) {
+			$config['category_ids'] = array_filter( array_map( 'intval', explode( ',', (string) $assoc_args['categories'] ) ) );
+		}
+		$config['force'] = ! empty( $assoc_args['force'] );
+
+		WP_CLI::log( 'Discovering categories and generating mathematical queue manifest...' );
+		$status = Card_Vault_Catalog_Crawler::start_crawler( $config );
+
+		WP_CLI::success( sprintf(
+			'Crawler started! %d total groups across %d categories (%d sets remaining).',
+			$status['total_groups'],
+			$status['total_categories'],
+			$status['remaining_groups']
+		) );
+		WP_CLI::log( sprintf(
+			'Mathematical Pacing: 1 set every %d seconds -> ETA: %s (%.1f hours).',
+			$status['delay_seconds'],
+			$status['eta_timestamp'] ? date( 'Y-m-d H:i:s T', $status['eta_timestamp'] ) : 'N/A',
+			$status['target_hours']
+		) );
+
+		// If daemon flag is enabled, run continuous loop
+		if ( ! empty( $assoc_args['daemon'] ) ) {
+			WP_CLI::log( 'Running continuous daemon loop (press Ctrl+C to detach)...' );
+			while ( true ) {
+				$state = Card_Vault_Catalog_Crawler::get_status( false );
+				if ( $state['status'] !== 'running' || $state['remaining_groups'] <= 0 ) {
+					WP_CLI::success( 'Crawler daemon completed all sets.' );
+					break;
+				}
+
+				WP_CLI::log( sprintf(
+					'[%s] Ingesting [%s] %s (ID: %d)...',
+					date( 'H:i:s' ),
+					$state['current_category_name'],
+					$state['current_group_name'],
+					$state['current_group_id']
+				) );
+
+				$step = Card_Vault_Catalog_Crawler::process_next_step();
+				if ( $step['success'] ) {
+					WP_CLI::log( sprintf( ' -> Ingested %d cards. %d sets remaining.', $step['imported_cards'], $step['remaining_groups'] ) );
+				} else {
+					WP_CLI::warning( ' -> Step encountered error: ' . ( $step['message'] ?? 'Check logs' ) );
+				}
+
+				if ( ( $step['remaining_groups'] ?? 0 ) <= 0 ) {
+					WP_CLI::success( 'All sets completed!' );
+					break;
+				}
+
+				$sleep_sec = max( 2, $state['delay_seconds'] );
+				WP_CLI::log( sprintf( 'Sleeping for %d seconds...', $sleep_sec ) );
+				sleep( $sleep_sec );
+			}
+		}
+	}
 }
 
 WP_CLI::add_command( 'card-vault', 'Card_Vault_Catalog_CLI' );

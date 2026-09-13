@@ -37,6 +37,7 @@ require_once XOPHZ_COMPASS_CARD_VAULT_PATH . 'includes/class-card-vault-products
 require_once XOPHZ_COMPASS_CARD_VAULT_PATH . 'includes/class-card-vault-number-normalizer.php';
 require_once XOPHZ_COMPASS_CARD_VAULT_PATH . 'includes/class-card-vault-catalog-db.php';
 require_once XOPHZ_COMPASS_CARD_VAULT_PATH . 'includes/class-card-vault-catalog-importer.php';
+require_once XOPHZ_COMPASS_CARD_VAULT_PATH . 'includes/class-card-vault-catalog-crawler.php';
 require_once XOPHZ_COMPASS_CARD_VAULT_PATH . 'includes/class-card-vault-sku-generator.php';
 require_once XOPHZ_COMPASS_CARD_VAULT_PATH . 'includes/class-card-vault-hookshot-bridge.php';
 require_once XOPHZ_COMPASS_CARD_VAULT_PATH . 'includes/class-card-vault-catalog-rest.php';
@@ -79,6 +80,9 @@ class Card_Vault extends Xophz_Compass_Plugin_Base {
 
 		// Initialize catalog importer & 6-hour cron updater
 		Card_Vault_Catalog_Importer::init();
+
+		// Initialize catalog crawler & mathematical pacing engine
+		Card_Vault_Catalog_Crawler::init();
 
 		// Initialize public router and reverse proxy
 		new Card_Vault_Public();
