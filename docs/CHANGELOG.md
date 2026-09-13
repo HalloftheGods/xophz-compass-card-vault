@@ -22,6 +22,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - **Group Statistics & Admin Gating**: Added `get_synced_groups()` in `includes/class-card-vault-catalog-db.php` deriving set sync timestamps and card counts, and restricted `/catalog/sync` to administrator capabilities (`manage_options`).
 
 ### Changed
+- **Compiled Frontend Assets**: Rebuilt `my-card-vault` production bundle and updated assets in `public/dist/` with Portfolio QR page, buyer portal, and fixed x-atoms global typing.
 - **Bazaar POS Barcode Resolution**: Enhanced `lookup_barcode` in `includes/class-card-vault-products.php` to resolve both manufacturer UPCs (sealed boxes/packs) from the SQLite catalog and `CV-*` single card SKUs from vault inventory in under 5ms.
 - **Thermal Label Tag Preview**: Integrated Code 128 barcode and single card SKU into the printable thermal sticker studio in `apps/my-card-vault/components/organisms/AIGradingModal.tsx`.
 

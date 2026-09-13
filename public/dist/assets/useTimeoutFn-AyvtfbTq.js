@@ -1,0 +1,1 @@
+import{hr as e}from"./VSheet-CdCV509e.js";function t(t,n=1e3){let r=null,i=()=>{r!==null&&(clearTimeout(r),r=null)};return e(i),{start:e=>(i(),r=setTimeout(()=>{r=null,t()},typeof e==`number`?e:n),i),stop:i,isPending:()=>r!==null}}export{t};
