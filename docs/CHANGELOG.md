@@ -3,6 +3,25 @@
 All notable changes to this WordPress plugin submodule will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [2026-09-13]
+
+### Added
+- **SQLite Master Catalog Engine**: Created `includes/class-card-vault-catalog-db.php` providing high-performance local SQLite storage (`cards.db`) with Write-Ahead Logging (WAL mode), 16MB page cache, B-Tree indexes, and FTS5 full-text search with automatic sync triggers.
+- **Smart Card Number Normalization**: Created `includes/class-card-vault-number-normalizer.php` decomposing card numbers (e.g. `004/102`, `199/165`, `TG01/TG30`, `OP05-001`), precomputing full-text search variant vectors, and sanitizing user queries to eliminate FTS5 syntax errors.
+- **TCG CSV Ingestion & Snapshot Sync**: Created `includes/class-card-vault-catalog-importer.php` supporting dual-mode operations: Hub Mode (ingesting daily CSV dumps from tcgcsv.com and building compressed snapshots) and BlackBox Client Mode (atomic download and zero-downtime database hydration).
+- **Automated 6-Hour Catalog Check Cron**: Registered `six_hours` WP-Cron interval (21600 seconds) in `includes/class-card-vault-catalog-importer.php` running `card_vault_catalog_check_cron` to verify Hub version manifests and auto-apply snapshots when updates are detected.
+- **Single Card SKU & Code 128 Barcodes**: Created `includes/class-card-vault-sku-generator.php` generating deterministic `CV-*` single inventory SKUs and rendering pure SVG Code 128 barcodes for 2.25" × 1.25" thermal toploader labels.
+- **Hookshot Webhook Automation Bridge**: Created `includes/class-card-vault-hookshot-bridge.php` listening for `catalog.updated` events from Central Hub (`cardvault.worldwidewebwork.com`) to trigger background database hydration.
+- **Catalog & Barcode REST Endpoints**: Registered `/wp-json/card-vault/v1/catalog/search`, `/catalog/cards/{id}`, `/catalog/barcode/{code}`, and `/catalog/status` secured via Gatekeeper API keys (`read:cards` scope) with support for query param `?check=1` to query Hub version.
+- **WP-CLI Management Suite**: Created `includes/class-card-vault-catalog-cli.php` providing `wp card-vault sync_group`, `wp card-vault sync_all`, `wp card-vault sync_hub`, `wp card-vault search`, `wp card-vault barcode`, `wp card-vault status`, `wp card-vault check_updates`, and `wp card-vault export_snapshot`.
+- **Batch Pokémon Set Sync & Rate-Limiting**: Added `batch_sync_groups()` and `get_available_groups()` in `includes/class-card-vault-catalog-importer.php` ingesting Pokémon sets from tcgcsv.com with configurable throttle delays and resume support.
+- **Empty Query Browsing & Pagination**: Enhanced `search_cards()` and added `count_cards()` in `includes/class-card-vault-catalog-db.php` supporting offset pagination and catalog browsing when search query is empty.
+- **Group Statistics & Admin Gating**: Added `get_synced_groups()` in `includes/class-card-vault-catalog-db.php` deriving set sync timestamps and card counts, and restricted `/catalog/sync` to administrator capabilities (`manage_options`).
+
+### Changed
+- **Bazaar POS Barcode Resolution**: Enhanced `lookup_barcode` in `includes/class-card-vault-products.php` to resolve both manufacturer UPCs (sealed boxes/packs) from the SQLite catalog and `CV-*` single card SKUs from vault inventory in under 5ms.
+- **Thermal Label Tag Preview**: Integrated Code 128 barcode and single card SKU into the printable thermal sticker studio in `apps/my-card-vault/components/organisms/AIGradingModal.tsx`.
+
 ## [2026-09-12]
 
 ### Added

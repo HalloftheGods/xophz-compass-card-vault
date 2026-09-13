@@ -34,9 +34,20 @@ require_once XOPHZ_COMPASS_CARD_VAULT_PATH . 'includes/class-card-vault-wc-sync.
 require_once XOPHZ_COMPASS_CARD_VAULT_PATH . 'includes/class-card-vault-gemini.php';
 require_once XOPHZ_COMPASS_CARD_VAULT_PATH . 'includes/class-card-vault-stripe.php';
 require_once XOPHZ_COMPASS_CARD_VAULT_PATH . 'includes/class-card-vault-products.php';
+require_once XOPHZ_COMPASS_CARD_VAULT_PATH . 'includes/class-card-vault-number-normalizer.php';
+require_once XOPHZ_COMPASS_CARD_VAULT_PATH . 'includes/class-card-vault-catalog-db.php';
+require_once XOPHZ_COMPASS_CARD_VAULT_PATH . 'includes/class-card-vault-catalog-importer.php';
+require_once XOPHZ_COMPASS_CARD_VAULT_PATH . 'includes/class-card-vault-sku-generator.php';
+require_once XOPHZ_COMPASS_CARD_VAULT_PATH . 'includes/class-card-vault-hookshot-bridge.php';
+require_once XOPHZ_COMPASS_CARD_VAULT_PATH . 'includes/class-card-vault-catalog-rest.php';
 require_once XOPHZ_COMPASS_CARD_VAULT_PATH . 'includes/class-card-vault-api.php';
 require_once XOPHZ_COMPASS_CARD_VAULT_PATH . 'admin/class-card-vault-admin.php';
 require_once XOPHZ_COMPASS_CARD_VAULT_PATH . 'public/class-card-vault-public.php';
+
+// WP-CLI commands
+if ( defined( 'WP_CLI' ) && WP_CLI ) {
+	require_once XOPHZ_COMPASS_CARD_VAULT_PATH . 'includes/class-card-vault-catalog-cli.php';
+}
 
 // Ensure Core Helper Suite autoloader is active if running standalone
 if ( ! class_exists( 'Xophz_Compass_Plugin_Base' ) ) {
@@ -63,6 +74,12 @@ class Card_Vault extends Xophz_Compass_Plugin_Base {
 		// Initialize Community WooCommerce account hooks
 		Card_Vault_Community::init();
 
+		// Initialize Hookshot webhook automation bridge
+		Card_Vault_Hookshot_Bridge::init();
+
+		// Initialize catalog importer & 6-hour cron updater
+		Card_Vault_Catalog_Importer::init();
+
 		// Initialize public router and reverse proxy
 		new Card_Vault_Public();
 
@@ -84,6 +101,9 @@ class Card_Vault extends Xophz_Compass_Plugin_Base {
 	public function register_rest_routes(): void {
 		$api = new Card_Vault_API();
 		$api->register_routes();
+
+		// Register SQLite catalog and barcode REST endpoints
+		Card_Vault_Catalog_REST::register_routes();
 	}
 
 	/**
@@ -162,6 +182,7 @@ class Card_Vault extends Xophz_Compass_Plugin_Base {
 	 * Flushes rewrite rules upon plugin deactivation.
 	 */
 	public static function deactivate(): void {
+		wp_clear_scheduled_hook( 'card_vault_catalog_check_cron' );
 		flush_rewrite_rules();
 	}
 }

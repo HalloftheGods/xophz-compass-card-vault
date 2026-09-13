@@ -191,7 +191,12 @@ class Card_Vault_Activator {
 		// 7. Register roles and custom capabilities
 		self::register_roles_and_capabilities();
 
-		// 8. Flush rewrite rules for /card-vault endpoint
+		// 8. Initialize SQLite Card Catalog Storage & Schema
+		if ( class_exists( 'Card_Vault_Catalog_DB' ) ) {
+			Card_Vault_Catalog_DB::ensure_database();
+		}
+
+		// 9. Flush rewrite rules for /card-vault endpoint
 		if ( class_exists( 'Card_Vault_Public' ) ) {
 			$public = new Card_Vault_Public();
 			$public->register_rewrites();

@@ -1,0 +1,161 @@
+/**
+ * My Card Vault - Progressive Web App Service Worker
+ * Version: card-vault-pwa-v1
+ *
+ * Provides offline shell caching, stale-while-revalidate caching for static assets,
+ * and seamless offline app loading for show floor / convention use.
+ *
+ * Strict Hygiene: Zero em dashes (hyphens or colons only).
+ */
+
+const CACHE_NAME = 'card-vault-pwa-v1';
+
+const CORE_ASSETS = [
+  './',
+  './index.html',
+  './manifest.webmanifest',
+  './manifest.json',
+  './favicon.ico',
+  './favicon.svg',
+  './assets/icon.svg',
+  './icons/icon-192x192.png',
+  './icons/icon-512x512.png',
+  './icons/icon-maskable-192x192.png',
+  './icons/icon-maskable-512x512.png',
+  './icons/apple-touch-icon.png'
+];
+
+// 1. Install Event: Cache Core App Shell
+self.addEventListener('install', (event) => {
+  event.waitUntil(
+    caches.open(CACHE_NAME).then(async (cache) => {
+      // Use map with individual catches to prevent a single missing asset from breaking install
+      const cachePromises = CORE_ASSETS.map(async (url) => {
+        try {
+          const response = await fetch(url, { cache: 'no-cache' });
+          if (response.ok) {
+            await cache.put(url, response);
+          }
+        } catch (_err) {
+          // Soft failure for individual pre-cache items
+        }
+      });
+      await Promise.allSettled(cachePromises);
+    }).then(() => self.skipWaiting())
+  );
+});
+
+// 2. Activate Event: Clean up outdated caches and claim clients
+self.addEventListener('activate', (event) => {
+  event.waitUntil(
+    caches.keys().then((cacheNames) => {
+      return Promise.all(
+        cacheNames
+          .filter((name) => name !== CACHE_NAME)
+          .map((name) => caches.delete(name))
+      );
+    }).then(() => self.clients.claim())
+  );
+});
+
+// 3. Fetch Event: Network-First for Navigation, Stale-While-Revalidate for Assets
+self.addEventListener('fetch', (event) => {
+  const { request } = event;
+
+  // Only intercept GET requests with http/https schemes
+  if (request.method !== 'GET') return;
+  if (!request.url.startsWith('http')) return;
+
+  const url = new URL(request.url);
+
+  // Bypass API endpoints from aggressive offline cache
+  const isApiRequest = url.pathname.includes('/wp-json/') ||
+    url.pathname.includes('/api/') ||
+    url.searchParams.has('rest_route');
+
+  if (isApiRequest) {
+    // Network-first for dynamic API with no persistent cache write
+    event.respondWith(
+      fetch(request).catch(() => {
+        return new Response(JSON.stringify({ offline: true, error: 'Offline network mode' }), {
+          status: 503,
+          headers: { 'Content-Type': 'application/json' }
+        });
+      })
+    );
+    return;
+  }
+
+  // HTML Navigation Requests: Network-First with Cache Fallback
+  if (request.mode === 'navigate') {
+    event.respondWith(
+      fetch(request)
+        .then((networkResponse) => {
+          if (networkResponse && networkResponse.status === 200) {
+            const clone = networkResponse.clone();
+            caches.open(CACHE_NAME).then((cache) => cache.put(request, clone));
+          }
+          return networkResponse;
+        })
+        .catch(async () => {
+          const cachedPage = await caches.match(request);
+          if (cachedPage) return cachedPage;
+
+          const fallbackIndex = await caches.match('./index.html') || await caches.match('./');
+          if (fallbackIndex) return fallbackIndex;
+
+          return new Response('Offline: Please connect to the internet to load Card Vault.', {
+            status: 503,
+            headers: { 'Content-Type': 'text/plain' }
+          });
+        })
+    );
+    return;
+  }
+
+  // Static Assets (JS, CSS, Images, Fonts): Stale-While-Revalidate
+  const isStaticAsset = request.destination === 'script' ||
+    request.destination === 'style' ||
+    request.destination === 'image' ||
+    request.destination === 'font' ||
+    url.pathname.match(/\.(js|css|png|jpg|jpeg|svg|webp|woff|woff2|ttf|ico)$/i);
+
+  if (isStaticAsset) {
+    event.respondWith(
+      caches.match(request).then((cachedResponse) => {
+        const fetchPromise = fetch(request)
+          .then((networkResponse) => {
+            if (networkResponse && networkResponse.status === 200) {
+              const clone = networkResponse.clone();
+              caches.open(CACHE_NAME).then((cache) => cache.put(request, clone));
+            }
+            return networkResponse;
+          })
+          .catch(() => cachedResponse);
+
+        return cachedResponse || fetchPromise;
+      })
+    );
+    return;
+  }
+
+  // Default: Network with Cache Fallback
+  event.respondWith(
+    fetch(request)
+      .then((networkResponse) => {
+        if (networkResponse && networkResponse.status === 200) {
+          const clone = networkResponse.clone();
+          caches.open(CACHE_NAME).then((cache) => cache.put(request, clone));
+        }
+        return networkResponse;
+      })
+      .catch(() => caches.match(request))
+  );
+});
+
+// 4. Message Handler: Skip waiting trigger
+self.addEventListener('message', (event) => {
+  if (event.data && event.data.type === 'SKIP_WAITING') {
+    self.skipWaiting();
+  }
+});

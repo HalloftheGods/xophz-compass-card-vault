@@ -305,26 +305,52 @@ class Card_Vault_Products {
 			}
 		}
 
-		// 2. Tier 2: Master Card Catalog Match
-		$catalog_file = XOPHZ_COMPASS_CARD_VAULT_PATH . 'includes/data/pokemon-catalog.json';
-		if ( file_exists( $catalog_file ) ) {
-			$raw_data = file_get_contents( $catalog_file );
-			$cards    = json_decode( $raw_data, true ) ?: array();
-			foreach ( $cards as $card ) {
-				$card_id = strtolower( $card['id'] ?? '' );
-				if ( $card_id === strtolower( $clean_code ) ) {
+		// 2. Tier 2: Card Vault Single SKU (CV-*) & SQLite Master Catalog Match
+		if ( class_exists( 'Card_Vault_SKU_Generator' ) ) {
+			$info = Card_Vault_SKU_Generator::identify_barcode( $clean_code );
+
+			// Check if single card SKU in Vault Inventory
+			if ( $info['type'] === 'single_sku' ) {
+				global $wpdb;
+				$table = $wpdb->prefix . 'xophz_vault_collector_items';
+				$item = $wpdb->get_row(
+					$wpdb->prepare( "SELECT * FROM {$table} WHERE item_id = %s OR card_payload LIKE %s LIMIT 1", $clean_code, '%' . $wpdb->esc_like( $clean_code ) . '%' ),
+					ARRAY_A
+				);
+
+				if ( $item ) {
+					$payload = ! empty( $item['card_payload'] ) ? json_decode( $item['card_payload'], true ) : array();
 					return array(
 						'barcode'     => $clean_code,
-						'title'       => sprintf( '%s - %s #%s', $card['name'] ?? '', $card['setName'] ?? '', $card['number'] ?? '' ),
-						'brand'       => 'Pokemon TCG',
-						'description' => sprintf( 'Rarity: %s. Set: %s.', $card['rarity'] ?? '', $card['setName'] ?? '' ),
+						'title'       => sprintf( '%s (%s #%s)', $item['card_name'], $item['set_name'], $item['card_number'] ),
+						'brand'       => 'Card Vault Single',
+						'description' => sprintf( 'Condition: %s. Consignor: %s.', $item['condition_grade'], $item['wp_user_id'] ? 'User #' . $item['wp_user_id'] : 'House' ),
 						'category'    => 'Singles',
-						'imageUrl'    => $card['imageUrl'] ?? ( $card['smallImageUrl'] ?? '' ),
-						'price'       => floatval( $card['pricing']['rawMarketPrice'] ?? 0.00 ),
-						'source'      => 'master_catalog',
+						'imageUrl'    => $payload['imageUrl'] ?? ( $payload['card']['imageUrl'] ?? '' ),
+						'price'       => (float) ( $item['asking_price'] ?? $item['market_price'] ),
+						'condition'   => $item['condition_grade'],
+						'source'      => 'vault_single_inventory',
 						'found'       => true,
 					);
 				}
+			}
+		}
+
+		// Check SQLite Master Catalog (UPC or Catalog ID)
+		if ( class_exists( 'Card_Vault_Catalog_DB' ) ) {
+			$catalog_card = Card_Vault_Catalog_DB::get_card_by_barcode( $clean_code );
+			if ( $catalog_card ) {
+				return array(
+					'barcode'     => $clean_code,
+					'title'       => sprintf( '%s (%s #%s)', $catalog_card['name'], $catalog_card['group_name'], $catalog_card['raw_number'] ),
+					'brand'       => $catalog_card['category_name'],
+					'description' => sprintf( 'Rarity: %s. Set: %s.', $catalog_card['rarity'] ?: 'Standard', $catalog_card['group_name'] ),
+					'category'    => ! empty( $catalog_card['upc'] ) ? 'Sealed Product' : 'Singles',
+					'imageUrl'    => $catalog_card['image_url'],
+					'price'       => (float) ( $catalog_card['market_price'] ?: $catalog_card['low_price'] ),
+					'source'      => 'sqlite_master_catalog',
+					'found'       => true,
+				);
 			}
 		}
 
