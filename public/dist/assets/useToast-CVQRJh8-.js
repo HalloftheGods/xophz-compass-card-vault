@@ -1,0 +1,1 @@
+import{bn as e,yr as t}from"./createLucideIcon-s7tGBmv7.js";var n=4e3,r=t({status:`idle`});function i(){return{toastState:r,isVisible:e(()=>r.value.status===`visible`),showToast:(e,t=`info`,i=n)=>{e&&e.trim().length>0&&(r.value={status:`visible`,message:e.trim(),type:t,duration:i})},hideToast:()=>{r.value={status:`idle`}}}}export{i as t};

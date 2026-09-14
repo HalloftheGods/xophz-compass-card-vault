@@ -1,1 +1,0 @@
-import{an as e,br as t,hr as n,or as r,vr as i}from"./VSheet-CdCV509e.js";function a(a,o){let s=i(),c=t(!1);if(e){let e=new IntersectionObserver(t=>{a?.(t,e),c.value=!!t.find(e=>e.isIntersecting)},o);n(()=>{e.disconnect()}),r(s,(t,n)=>{n&&(e.unobserve(n),c.value=!1),t&&e.observe(t)},{flush:`post`})}return{intersectionRef:s,isIntersecting:c}}export{a as t};

@@ -1,0 +1,1 @@
+import{Cr as e,Gn as t,vr as n,xr as r}from"./createLucideIcon-s7tGBmv7.js";function i(){let i=r(!1);return t(()=>{window.requestAnimationFrame(()=>{i.value=!0})}),{ssrBootStyles:e(()=>i.value?void 0:{transition:`none !important`}),isBooted:n(i)}}export{i as t};
