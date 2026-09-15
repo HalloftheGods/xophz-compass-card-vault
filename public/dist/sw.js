@@ -36,8 +36,9 @@ self.addEventListener('install', (event) => {
           if (response.ok) {
             await cache.put(url, response);
           }
-        } catch (_err) {
-          // Soft failure for individual pre-cache items
+        } catch (err) {
+          const reason = err instanceof Error ? err.message : String(err);
+          void reason;
         }
       });
       await Promise.allSettled(cachePromises);

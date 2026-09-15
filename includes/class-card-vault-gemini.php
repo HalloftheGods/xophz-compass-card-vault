@@ -68,7 +68,17 @@ class Card_Vault_Gemini {
 	 * @param string $model Model identifier.
 	 * @return array|WP_Error Parsed response or WP_Error.
 	 */
-	public static function generate_content( $parts, $system_instruction = '', $model = 'gemini-2.5-flash' ) {
+	public static function generate_content( $parts, $system_instruction = '', $model = 'gemini-3.6-flash' ) {
+		if ( empty( $model ) || 'gemini-2.5-flash' === $model || 'gemini-2.5-pro' === $model ) {
+			$configured = get_option( 'card_vault_gemini_model', '' );
+			if ( ! empty( $configured ) ) {
+				$model = $configured;
+			} elseif ( defined( 'GEMINI_MODEL' ) && ! empty( GEMINI_MODEL ) ) {
+				$model = GEMINI_MODEL;
+			} else {
+				$model = 'gemini-3.6-flash';
+			}
+		}
 		$api_key = self::get_api_key();
 		if ( empty( $api_key ) ) {
 			return new WP_Error(
@@ -78,7 +88,14 @@ class Card_Vault_Gemini {
 			);
 		}
 
-		$endpoint = "https://generativelanguage.googleapis.com/v1beta/models/{$model}:generateContent?key={$api_key}";
+		// Prepare resilient model failover list (primary model + fallback models)
+		$models_to_try = array( $model );
+		if ( 'gemini-3.5-flash' !== $model ) {
+			$models_to_try[] = 'gemini-3.5-flash';
+		}
+		if ( 'gemini-3.6-flash' !== $model && ! in_array( 'gemini-3.6-flash', $models_to_try, true ) ) {
+			$models_to_try[] = 'gemini-3.6-flash';
+		}
 
 		$payload = array(
 			'contents' => array(
@@ -100,39 +117,58 @@ class Card_Vault_Gemini {
 			);
 		}
 
-		$response = wp_remote_post( $endpoint, array(
-			'headers' => array( 'Content-Type' => 'application/json' ),
-			'body'    => wp_json_encode( $payload ),
-			'timeout' => 45,
-		) );
+		$last_error = null;
 
-		if ( is_wp_error( $response ) ) {
-			return $response;
+		foreach ( $models_to_try as $attempt_model ) {
+			$endpoint = "https://generativelanguage.googleapis.com/v1beta/models/{$attempt_model}:generateContent?key={$api_key}";
+
+			$response = wp_remote_post( $endpoint, array(
+				'headers' => array( 'Content-Type' => 'application/json' ),
+				'body'    => wp_json_encode( $payload ),
+				'timeout' => 45,
+			) );
+
+			if ( is_wp_error( $response ) ) {
+				$last_error = $response;
+				continue;
+			}
+
+			$code = wp_remote_retrieve_response_code( $response );
+			$body = wp_remote_retrieve_body( $response );
+
+			// If Google returns 503 (demand spike), 429 (rate limit), or 404 (model retired), fail over to next model
+			if ( in_array( $code, array( 503, 429, 404 ), true ) ) {
+				$last_error = new WP_Error(
+					'gemini_api_error',
+					sprintf( 'Gemini API model %s returned status %d: %s', $attempt_model, $code, $body ),
+					array( 'status' => $code )
+				);
+				continue;
+			}
+
+			if ( $code < 200 || $code >= 300 ) {
+				return new WP_Error(
+					'gemini_api_error',
+					sprintf( 'Gemini API returned error code %d: %s', $code, $body ),
+					array( 'status' => $code )
+				);
+			}
+
+			$data = json_decode( $body, true );
+			$text = $data['candidates'][0]['content']['parts'][0]['text'] ?? '';
+
+			if ( empty( $text ) ) {
+				return new WP_Error( 'empty_gemini_response', __( 'Gemini returned an empty response.', 'xophz-compass-card-vault' ) );
+			}
+
+			$parsed = json_decode( $text, true );
+			if ( null === $parsed ) {
+				return array( 'raw_text' => $text );
+			}
+
+			return $parsed;
 		}
 
-		$code = wp_remote_retrieve_response_code( $response );
-		$body = wp_remote_retrieve_body( $response );
-
-		if ( $code < 200 || $code >= 300 ) {
-			return new WP_Error(
-				'gemini_api_error',
-				sprintf( 'Gemini API returned error code %d: %s', $code, $body ),
-				array( 'status' => $code )
-			);
-		}
-
-		$data = json_decode( $body, true );
-		$text = $data['candidates'][0]['content']['parts'][0]['text'] ?? '';
-
-		if ( empty( $text ) ) {
-			return new WP_Error( 'empty_gemini_response', __( 'Gemini returned an empty response.', 'xophz-compass-card-vault' ) );
-		}
-
-		$parsed = json_decode( $text, true );
-		if ( null === $parsed ) {
-			return array( 'raw_text' => $text );
-		}
-
-		return $parsed;
+		return $last_error ? $last_error : new WP_Error( 'gemini_api_failed', __( 'All Gemini models in fallback chain failed.', 'xophz-compass-card-vault' ) );
 	}
 }

@@ -113,16 +113,23 @@ class Card_Vault_Catalog_Importer {
 	}
 
 	/**
-	 * Cron worker callback for the 6-hour check.
+	 * Cron worker callback for the 6-hour check (Option 3 Self-Hosted Failsafe).
 	 */
 	public static function handle_cron_check_and_update(): void {
 		$check = self::check_for_updates();
 		if ( $check['update_available'] ) {
-			$result = self::sync_from_central_hub();
-			if ( $result['success'] ) {
-				update_option( 'card_vault_catalog_last_synced', time() );
-				if ( ! empty( $check['remote_version'] ) ) {
-					update_option( 'card_vault_catalog_version', $check['remote_version'] );
+			if ( class_exists( 'Card_Vault_Hookshot_Bridge' ) ) {
+				Card_Vault_Hookshot_Bridge::schedule_or_run_sync( array(
+					'source'       => 'snapshot',
+					'download_url' => self::SNAPSHOT_ENDPOINT,
+				) );
+			} else {
+				$result = self::sync_from_central_hub();
+				if ( $result['success'] ) {
+					update_option( 'card_vault_catalog_last_synced', time() );
+					if ( ! empty( $check['remote_version'] ) ) {
+						update_option( 'card_vault_catalog_version', $check['remote_version'] );
+					}
 				}
 			}
 		}
@@ -442,6 +449,18 @@ class Card_Vault_Catalog_Importer {
 				) );
 
 				$count++;
+				$history_snapshots[] = array(
+					'card_id'    => "tcg-{$pid}",
+					'raw_market' => $market_price,
+					'raw_low'    => $low_price,
+					'raw_mid'    => $mid_price,
+					'raw_high'   => $high_price,
+					'source'     => 'tcgcsv',
+				);
+			}
+
+			if ( ! empty( $history_snapshots ) ) {
+				Card_Vault_Price_History::record_batch_snapshots( $pdo, $history_snapshots );
 			}
 
 			$pdo->commit();
@@ -452,6 +471,177 @@ class Card_Vault_Catalog_Importer {
 			$pdo->rollBack();
 			fclose( $handle );
 			return array( 'success' => false, 'imported_count' => $count, 'error' => $e->getMessage() );
+		}
+	}
+
+	/**
+	 * Ingest PriceCharting CSV export to populate graded slab comps and price history.
+	 *
+	 * Performs composite matching (set, number, variant) to prevent comp mismatches.
+	 *
+	 * @param string $csv_path Absolute path to PriceCharting CSV.
+	 * @return array{success: bool, matched_count: int, elapsed_sec: float, error?: string}
+	 */
+	public static function ingest_pricecharting_csv( string $csv_path ): array {
+		if ( ! file_exists( $csv_path ) || ! is_readable( $csv_path ) ) {
+			return array( 'success' => false, 'matched_count' => 0, 'elapsed_sec' => 0, 'error' => 'CSV file unreadable.' );
+		}
+
+		$handle = fopen( $csv_path, 'r' );
+		if ( ! $handle ) {
+			return array( 'success' => false, 'matched_count' => 0, 'elapsed_sec' => 0, 'error' => 'Failed to open CSV file.' );
+		}
+
+		$header = fgetcsv( $handle );
+		if ( ! $header || ! is_array( $header ) ) {
+			fclose( $handle );
+			return array( 'success' => false, 'matched_count' => 0, 'elapsed_sec' => 0, 'error' => 'Invalid or empty CSV header.' );
+		}
+
+		// Normalize column keys
+		$cols = array();
+		foreach ( $header as $idx => $col_name ) {
+			$norm_key = strtolower( trim( str_replace( array( '-', '_', ' ' ), '', $col_name ) ) );
+			$cols[ $norm_key ] = $idx;
+		}
+
+		$idx_product = $cols['productname'] ?? ( $cols['name'] ?? null );
+		$idx_console = $cols['consolename'] ?? ( $cols['set'] ?? null );
+		$idx_loose   = $cols['looseprice'] ?? ( $cols['priceinpennies'] ?? ( $cols['ungradedprice'] ?? null ) );
+		$idx_psa10   = $cols['psa10price'] ?? ( $cols['gradedprice'] ?? ( $cols['gemmintprice'] ?? null ) );
+		$idx_psa9    = $cols['psa9price'] ?? ( $cols['mintprice'] ?? null );
+
+		if ( $idx_product === null ) {
+			fclose( $handle );
+			return array( 'success' => false, 'matched_count' => 0, 'elapsed_sec' => 0, 'error' => 'Missing product-name column in PriceCharting CSV.' );
+		}
+
+		Card_Vault_Catalog_DB::ensure_database();
+		$pdo = Card_Vault_Catalog_DB::get_connection();
+		$start_time = microtime( true );
+		$now = time();
+		$matched_count = 0;
+		$history_snapshots = array();
+
+		$update_stmt = $pdo->prepare( '
+			UPDATE cards SET
+				psa9_price = CASE WHEN :psa9 > 0 THEN :psa9 ELSE psa9_price END,
+				psa10_price = CASE WHEN :psa10 > 0 THEN :psa10 ELSE psa10_price END,
+				pricing_source = "pricecharting",
+				updated_at = :now
+			WHERE id = :id
+		' );
+
+		$lookup_num_stmt = $pdo->prepare( '
+			SELECT id, clean_name, group_name FROM cards
+			WHERE clean_number = :clean_num AND (group_name LIKE :set_wild OR :set_exact = "")
+			LIMIT 5
+		' );
+
+		$pdo->beginTransaction();
+
+		try {
+			while ( ( $row = fgetcsv( $handle ) ) !== false ) {
+				$raw_product = isset( $row[ $idx_product ] ) ? trim( (string) $row[ $idx_product ] ) : '';
+				if ( empty( $raw_product ) ) {
+					continue;
+				}
+
+				$raw_console = ( $idx_console !== null && isset( $row[ $idx_console ] ) ) ? trim( (string) $row[ $idx_console ] ) : '';
+				$clean_set   = preg_replace( '/^pokemon\s+/i', '', $raw_console );
+
+				$card_number = '';
+				$variant = '';
+				$card_name = $raw_product;
+
+				if ( preg_match( '/#([A-Za-z0-9\/-]+)/', $raw_product, $m ) ) {
+					$card_number = $m[1];
+					$card_name = trim( str_replace( $m[0], '', $card_name ) );
+				}
+
+				if ( preg_match( '/\[(.*?)\]/', $raw_product, $m ) ) {
+					$variant = $m[1];
+					$card_name = trim( str_replace( $m[0], '', $card_name ) );
+				}
+
+				$card_name = preg_replace( '/\s+/', ' ', trim( $card_name ) );
+				$clean_num = ltrim( explode( '/', $card_number )[0], '0' );
+
+				$raw_loose_val = ( $idx_loose !== null && isset( $row[ $idx_loose ] ) ) ? (float) preg_replace( '/[^\d.]/', '', (string) $row[ $idx_loose ] ) : 0.0;
+				$raw_psa10_val = ( $idx_psa10 !== null && isset( $row[ $idx_psa10 ] ) ) ? (float) preg_replace( '/[^\d.]/', '', (string) $row[ $idx_psa10 ] ) : 0.0;
+				$raw_psa9_val  = ( $idx_psa9 !== null && isset( $row[ $idx_psa9 ] ) ) ? (float) preg_replace( '/[^\d.]/', '', (string) $row[ $idx_psa9 ] ) : 0.0;
+
+				$psa10 = $raw_psa10_val > 500 && strpos( strtolower( $header[ $idx_psa10 ] ?? '' ), 'pennies' ) !== false ? $raw_psa10_val / 100 : $raw_psa10_val;
+				$psa9  = $raw_psa9_val > 500 && strpos( strtolower( $header[ $idx_psa9 ] ?? '' ), 'pennies' ) !== false ? $raw_psa9_val / 100 : $raw_psa9_val;
+				$loose = $raw_loose_val > 500 && strpos( strtolower( $header[ $idx_loose ] ?? '' ), 'pennies' ) !== false ? $raw_loose_val / 100 : $raw_loose_val;
+
+				if ( $psa10 <= 0 && $psa9 <= 0 ) {
+					continue;
+				}
+
+				$matched_id = null;
+				if ( ! empty( $clean_num ) ) {
+					$lookup_num_stmt->execute( array(
+						':clean_num' => $clean_num,
+						':set_wild'  => "%{$clean_set}%",
+						':set_exact' => $clean_set,
+					) );
+					$candidates = $lookup_num_stmt->fetchAll( PDO::FETCH_ASSOC );
+
+					if ( count( $candidates ) === 1 ) {
+						$matched_id = $candidates[0]['id'];
+					} elseif ( count( $candidates ) > 1 ) {
+						$lower_name = strtolower( $card_name );
+						foreach ( $candidates as $cand ) {
+							if ( strpos( $cand['clean_name'], $lower_name ) !== false || strpos( $lower_name, $cand['clean_name'] ) !== false ) {
+								$matched_id = $cand['id'];
+								break;
+							}
+						}
+					}
+				}
+
+				if ( $matched_id ) {
+					$update_stmt->execute( array(
+						':id'    => $matched_id,
+						':psa9'  => $psa9,
+						':psa10' => $psa10,
+						':now'   => $now,
+					) );
+
+					$history_snapshots[] = array(
+						'card_id'    => $matched_id,
+						'raw_market' => $loose,
+						'psa_9'      => $psa9,
+						'psa_10'     => $psa10,
+						'source'     => 'pricecharting',
+					);
+
+					$matched_count++;
+				}
+			}
+
+			if ( ! empty( $history_snapshots ) ) {
+				Card_Vault_Price_History::record_batch_snapshots( $pdo, $history_snapshots );
+			}
+
+			$pdo->commit();
+			fclose( $handle );
+
+			return array(
+				'success'       => true,
+				'matched_count' => $matched_count,
+				'elapsed_sec'   => round( microtime( true ) - $start_time, 2 ),
+			);
+		} catch ( Exception $e ) {
+			$pdo->rollBack();
+			fclose( $handle );
+			return array(
+				'success'       => false,
+				'matched_count' => $matched_count,
+				'elapsed_sec'   => round( microtime( true ) - $start_time, 2 ),
+				'error'         => $e->getMessage(),
+			);
 		}
 	}
 

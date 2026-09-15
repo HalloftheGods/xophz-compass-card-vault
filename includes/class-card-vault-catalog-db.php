@@ -142,12 +142,23 @@ class Card_Vault_Catalog_DB {
 				mid_price REAL DEFAULT 0.00,
 				high_price REAL DEFAULT 0.00,
 				direct_low_price REAL,
+				psa9_price REAL DEFAULT 0.00,
+				psa10_price REAL DEFAULT 0.00,
+				bgs95_price REAL DEFAULT 0.00,
+				cgc10_price REAL DEFAULT 0.00,
+				pricing_source TEXT DEFAULT "tcgcsv",
 				updated_at INTEGER NOT NULL,
 
 				image_url TEXT,
 				tcgplayer_url TEXT
 			);
 		' );
+
+		// 1b. Schema column migration check for existing databases
+		self::migrate_cards_columns( $pdo );
+
+		// 1c. Initialize Price History Time-Series Table
+		Card_Vault_Price_History::ensure_table( $pdo );
 
 		// 2. High-Speed B-Tree Indexes
 		$pdo->exec( 'CREATE INDEX IF NOT EXISTS idx_cards_numeric_lookup ON cards (numeric_number, clean_number);' );
@@ -515,6 +526,56 @@ class Card_Vault_Catalog_DB {
 		}
 
 		return null;
+	}
+
+	/**
+	 * Run column migrations on existing cards table if upgrading from earlier schema.
+	 *
+	 * @param PDO $pdo SQLite PDO instance.
+	 */
+	private static function migrate_cards_columns( PDO $pdo ): void {
+		try {
+			$cols = $pdo->query( 'PRAGMA table_info(cards)' )->fetchAll( PDO::FETCH_COLUMN, 1 );
+			$new_cols = array(
+				'psa9_price'     => 'REAL DEFAULT 0.00',
+				'psa10_price'    => 'REAL DEFAULT 0.00',
+				'bgs95_price'    => 'REAL DEFAULT 0.00',
+				'cgc10_price'    => 'REAL DEFAULT 0.00',
+				'pricing_source' => "TEXT DEFAULT 'tcgcsv'",
+			);
+
+			foreach ( $new_cols as $col_name => $col_def ) {
+				if ( ! in_array( $col_name, $cols, true ) ) {
+					$pdo->exec( "ALTER TABLE cards ADD COLUMN {$col_name} {$col_def};" );
+				}
+			}
+		} catch ( Exception $e ) {
+			// PRAGMA query may fail if table doesn't exist yet; safe to ignore
+		}
+	}
+
+	/**
+	 * Retrieve chronological price history for a card.
+	 *
+	 * @param string $card_id Card identifier.
+	 * @param int    $days    Number of days of history.
+	 * @return array
+	 */
+	public static function get_card_price_history( string $card_id, int $days = 30 ): array {
+		$pdo = self::get_connection();
+		return Card_Vault_Price_History::get_card_history( $pdo, $card_id, $days );
+	}
+
+	/**
+	 * Retrieve portfolio valuation history across multiple cards.
+	 *
+	 * @param array $items List of inventory items with card_id, quantity, condition, acquired_price.
+	 * @param int   $days  Number of days of history.
+	 * @return array List of PerformancePoints.
+	 */
+	public static function get_portfolio_history( array $items, int $days = 30 ): array {
+		$pdo = self::get_connection();
+		return Card_Vault_Price_History::get_portfolio_history( $pdo, $items, $days );
 	}
 
 	/**

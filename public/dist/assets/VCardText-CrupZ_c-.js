@@ -1,0 +1,1 @@
+import{A as e,An as t,I as n,Jr as r,Kr as i,N as a,dn as o,un as s}from"./createLucideIcon-BXxp8Qvi.js";var c=o({opacity:[Number,String],...s(),...e()},`VCardText`),l=n()({name:`VCardText`,props:c(),setup(e,n){let{slots:o}=n;return a(()=>t(e.tag,{class:i([`v-card-text`,e.class]),style:r([{"--v-card-text-opacity":e.opacity},e.style])},o)),{}}});export{l as t};

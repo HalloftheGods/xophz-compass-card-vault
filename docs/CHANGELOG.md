@@ -3,6 +3,20 @@
 All notable changes to this WordPress plugin submodule will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [2026-09-14]
+
+### Added
+- **Dual-Track SQLite Valuation Engine**: Extended `includes/class-card-vault-catalog-db.php` with dedicated slab price columns (`psa9_price`, `psa10_price`, `bgs95_price`, `cgc10_price`, `pricing_source`) and automated schema migration checks for existing `cards.db` files.
+- **Time-Series Price History System**: Created `includes/class-card-vault-price-history.php` providing single-responsibility management of the `card_price_history` SQLite table, batch transaction snapshots on set ingestion, portfolio historical valuation aggregation, and automated 90-day retention pruning.
+- **PriceCharting CSV Ingestion**: Built composite matching parser in `includes/class-card-vault-catalog-importer.php` matching on set, card number, and variant tokens to ingest graded slab comps, accessible via WP-CLI `wp card-vault import-pricecharting` and REST `/catalog/upload-pricecharting`.
+- **Historical Pricing REST Endpoints**: Registered `/catalog/cards/{id}/history` and `/catalog/portfolio/history` in `includes/class-card-vault-catalog-rest.php` returning daily time-series comp points for charting.
+- **Dual-Mode Webhook & Action Scheduler Ingestion**: Updated `includes/class-card-vault-hookshot-bridge.php` to register `card_vault_catalog_sync` with Hookshot, asynchronously enqueueing tasks via Action Scheduler (`as_enqueue_async_action`) to avoid web request timeouts. Added a lightweight 6-hour Action Scheduler HTTP HEAD probe in `includes/class-card-vault-catalog-importer.php` as a self-hosted failsafe.
+
+### Fixed
+- **Gemini Model Upgrade and Transient 503 Failover**: Updated default vision/multimodal model in `includes/class-card-vault-gemini.php` from deprecated `gemini-2.5-flash` to `gemini-3.6-flash`. Added resilient failover chain to `gemini-3.5-flash` for automatic recovery during Google API 503 high-demand spikes, 429 rate limits, and 404 retired models. Added configurable model resolution via `card_vault_gemini_model` WordPress option and `GEMINI_MODEL` constant fallback.
+- **Scan-Card Domain Envelope Resolution (`handle_scan_card`)**: Enhanced `handle_scan_card` in `includes/class-card-vault-api.php` to automatically query the SQLite database (`Card_Vault_Catalog_DB::search_cards`) using extracted card name and number. Attached full `matchedCard` domain object with verified market pricing, set metadata, and clean numbering, falling back to a structured Gemini envelope when not in SQLite. Ensures the frontend scanner queue and batch review modal immediately display the card without remaining stuck on "Identifying card...".
+- **Scan-Card Text Hint Injection & Fallback Resolution (`handle_scan_card`)**: Enhanced `handle_scan_card` in `includes/class-card-vault-api.php` to accept optional `textHint` parameter. Injected user-supplied card context directly into Gemini's multimodal prompt, provided direct SQLite catalog lookup fallback using `textHint`, and added support for `image` as an alternate key to `imageBase64`.
+
 ## [2026-09-13]
 
 ### Added
