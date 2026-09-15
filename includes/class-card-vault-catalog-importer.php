@@ -348,30 +348,9 @@ class Card_Vault_Catalog_Importer {
 		// Map column names to indices
 		$cols = array_flip( array_map( 'trim', $header ) );
 
-		$pdo = Card_Vault_Catalog_DB::get_connection();
-		$sql = '
-			INSERT OR REPLACE INTO cards (
-				id, tcgplayer_id, category_id, category_name, group_id, group_name,
-				name, clean_name, sub_type_name,
-				raw_number, clean_number, numeric_number, number_prefix, total_set_number, number_variants,
-				rarity, card_type, stage_or_subtype, hp, card_text, upc,
-				market_price, low_price, mid_price, high_price, direct_low_price,
-				updated_at, image_url, tcgplayer_url
-			) VALUES (
-				:id, :tcgplayer_id, :category_id, :category_name, :group_id, :group_name,
-				:name, :clean_name, :sub_type_name,
-				:raw_number, :clean_number, :numeric_number, :number_prefix, :total_set_number, :number_variants,
-				:rarity, :card_type, :stage_or_subtype, :hp, :card_text, :upc,
-				:market_price, :low_price, :mid_price, :high_price, :direct_low_price,
-				:updated_at, :image_url, :tcgplayer_url
-			)
-		';
-
-		$stmt = $pdo->prepare( $sql );
-		$now = time();
-		$count = 0;
-
-		$pdo->beginTransaction();
+		$cards_batch = array();
+		$now         = time();
+		$count       = 0;
 
 		try {
 			while ( ( $row = fgetcsv( $handle ) ) !== false ) {
@@ -409,47 +388,68 @@ class Card_Vault_Catalog_Importer {
 				$image_url    = isset( $cols['imageUrl'] ) ? trim( (string) ( $row[ $cols['imageUrl'] ] ?? '' ) ) : '';
 				$tcg_url      = isset( $cols['url'] ) ? trim( (string) ( $row[ $cols['url'] ] ?? '' ) ) : '';
 
-				$stmt->execute( array(
-					':id'               => "tcg-{$pid}",
-					':tcgplayer_id'     => $pid,
-					':category_id'      => $category_id,
-					':category_name'    => $category_name,
-					':group_id'         => $group_id,
-					':group_name'       => $group_name,
-					':name'             => $name,
-					':clean_name'       => $clean_name,
-					':sub_type_name'    => $subtype,
-					':raw_number'       => $norm['raw_number'],
-					':clean_number'     => $norm['clean_number'],
-					':numeric_number'   => $norm['numeric_number'],
-					':number_prefix'    => $norm['number_prefix'],
-					':total_set_number' => $norm['total_set_number'],
-					':number_variants'  => $norm['number_variants'],
-					':rarity'           => $rarity,
-					':card_type'        => $card_type,
-					':stage_or_subtype' => $stage,
-					':hp'               => $hp,
-					':card_text'        => $card_text,
-					':upc'              => ! empty( $upc ) ? $upc : null,
-					':market_price'     => $market_price,
-					':low_price'        => $low_price,
-					':mid_price'        => $mid_price,
-					':high_price'       => $high_price,
-					':direct_low_price' => $direct_low,
-					':updated_at'       => $now,
-					':image_url'        => $image_url,
-					':tcgplayer_url'    => $tcg_url,
-				) );
+				$cards_batch[] = array(
+					'id'               => "tcg-{$pid}",
+					'tcgplayer_id'     => $pid,
+					'category_id'      => $category_id,
+					'category_name'    => $category_name,
+					'group_id'         => $group_id,
+					'group_name'       => $group_name,
+					'name'             => $name,
+					'clean_name'       => $clean_name,
+					'sub_type_name'    => $subtype,
+					'raw_number'       => $norm['raw_number'],
+					'clean_number'     => $norm['clean_number'],
+					'numeric_number'   => $norm['numeric_number'],
+					'number_prefix'    => $norm['number_prefix'],
+					'total_set_number' => $norm['total_set_number'],
+					'number_variants'  => $norm['number_variants'],
+					'rarity'           => $rarity,
+					'card_type'        => $card_type,
+					'stage_or_subtype' => $stage,
+					'hp'               => $hp,
+					'card_text'        => $card_text,
+					'upc'              => ! empty( $upc ) ? $upc : null,
+					'market_price'     => $market_price,
+					'low_price'        => $low_price,
+					'mid_price'        => $mid_price,
+					'high_price'       => $high_price,
+					'direct_low_price' => $direct_low,
+					'updated_at'       => $now,
+					'image_url'        => $image_url,
+					'tcgplayer_url'    => $tcg_url,
+				);
 
 				$count++;
 			}
 
-			$pdo->commit();
 			fclose( $handle );
+
+			if ( ! empty( $cards_batch ) ) {
+				Card_Vault_Catalog_DB::batch_upsert_cards( $cards_batch );
+
+				// Update sync sets record in database
+				global $wpdb;
+				$sets_table = Card_Vault_Catalog_DB::get_sets_table_name();
+				$wpdb->replace(
+					$sets_table,
+					array(
+						'group_id'       => $group_id,
+						'category_id'    => $category_id,
+						'group_name'     => $group_name,
+						'category_name'  => $category_name,
+						'is_enabled'     => 1,
+						'priority'       => 10,
+						'card_count'     => $count,
+						'last_synced_at' => current_time( 'mysql' ),
+						'sync_status'    => 'synced',
+					),
+					array( '%d', '%d', '%s', '%s', '%d', '%d', '%d', '%s', '%s' )
+				);
+			}
 
 			return array( 'success' => true, 'imported_count' => $count );
 		} catch ( Exception $e ) {
-			$pdo->rollBack();
 			fclose( $handle );
 			return array( 'success' => false, 'imported_count' => $count, 'error' => $e->getMessage() );
 		}
@@ -572,15 +572,17 @@ class Card_Vault_Catalog_Importer {
 	 */
 	public static function export_compressed_snapshot( ?string $dest_path = null ) {
 		$src_db = Card_Vault_Catalog_DB::get_db_path();
-		if ( ! file_exists( $src_db ) ) {
+		if ( empty( $src_db ) || ! file_exists( $src_db ) ) {
 			return false;
 		}
 
-		// Run vacuum & optimize before compressing
+		// Run vacuum & optimize before compressing if PDO connection exists
 		try {
 			$pdo = Card_Vault_Catalog_DB::get_connection();
-			$pdo->exec( 'PRAGMA optimize;' );
-			$pdo->exec( 'VACUUM;' );
+			if ( $pdo && is_object( $pdo ) ) {
+				$pdo->exec( 'PRAGMA optimize;' );
+				$pdo->exec( 'VACUUM;' );
+			}
 		} catch ( Exception $e ) {
 			// Continue even if vacuum fails
 		}

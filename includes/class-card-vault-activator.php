@@ -191,7 +191,7 @@ class Card_Vault_Activator {
 		// 7. Register roles and custom capabilities
 		self::register_roles_and_capabilities();
 
-		// 8. Initialize SQLite Card Catalog Storage & Schema
+		// 8. Initialize Subsite-Isolated MySQL Card Catalog Storage & Schema
 		if ( class_exists( 'Card_Vault_Catalog_DB' ) ) {
 			Card_Vault_Catalog_DB::ensure_database();
 		}

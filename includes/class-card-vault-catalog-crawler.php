@@ -129,16 +129,36 @@ class Card_Vault_Catalog_Crawler {
 				}
 			}
 		} else {
-			$target_categories = $all_categories;
+			$selected_cat_ids = Card_Vault_Catalog_DB::get_selected_categories();
+			$id_map           = array_flip( array_map( 'intval', $selected_cat_ids ) );
+			foreach ( $all_categories as $cat ) {
+				if ( isset( $id_map[ (int) $cat['categoryId'] ] ) ) {
+					$target_categories[] = $cat;
+				}
+			}
+			if ( empty( $target_categories ) ) {
+				$target_categories = $all_categories;
+			}
 		}
 
-		// Retrieve synced groups from local SQLite database
+		// Retrieve synced groups from subsite MySQL database
 		$synced = Card_Vault_Catalog_DB::get_synced_groups();
 		$synced_map = array();
 		foreach ( $synced as $s ) {
 			$key = ((int) $s['category_id']) . '_' . ((int) $s['group_id']);
 			$synced_map[ $key ] = true;
 		}
+
+		// Check for sets disabled in settings
+		global $wpdb;
+		$sets_table    = Card_Vault_Catalog_DB::get_sets_table_name();
+		$disabled_gids = array();
+		if ( $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $sets_table ) ) === $sets_table ) {
+			$disabled_rows = $wpdb->get_col( "SELECT group_id FROM {$sets_table} WHERE is_enabled = 0" );
+			$disabled_gids = array_flip( array_map( 'intval', $disabled_rows ?: array() ) );
+		}
+
+		$scope = Card_Vault_Catalog_DB::get_sets_scope();
 
 		$queue = array();
 		$category_summaries = array();
@@ -155,12 +175,19 @@ class Card_Vault_Catalog_Crawler {
 			}
 
 			$groups = Card_Vault_Catalog_Importer::get_available_groups( $cid );
+
+			// Apply sets scope if configured (e.g. limit to newest N sets per category)
+			if ( $scope !== 'all' && is_numeric( $scope ) ) {
+				$limit  = max( 1, (int) $scope );
+				$groups = array_slice( $groups, 0, $limit );
+			}
+
 			$cat_total = count( $groups );
 			$cat_synced = 0;
 
 			foreach ( $groups as $g ) {
 				$gid = (int) ( $g['groupId'] ?? 0 );
-				if ( $gid <= 0 ) {
+				if ( $gid <= 0 || isset( $disabled_gids[ $gid ] ) ) {
 					continue;
 				}
 
