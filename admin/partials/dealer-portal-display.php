@@ -38,6 +38,28 @@ $app_url      = home_url( '/' . $slug );
 		</div>
 	</div>
 
+	<?php if ( ! empty( $_GET['cv_msg'] ) ) : ?>
+		<?php
+		$cv_msg_type = sanitize_key( $_GET['cv_msg'] );
+		$cv_notices  = array(
+			'crawler_started'     => array( 'success', __( 'Catalog crawler started with polite rate-limiting pacing.', 'xophz-compass-card-vault' ) ),
+			'crawler_paused'      => array( 'warning', __( 'Catalog crawler paused.', 'xophz-compass-card-vault' ) ),
+			'crawler_reset'       => array( 'info', __( 'Catalog crawler queue has been reset to idle.', 'xophz-compass-card-vault' ) ),
+			'crawler_stepped'     => array( 'success', __( 'Stepped forward: Ingested 1 set successfully.', 'xophz-compass-card-vault' ) ),
+			'crawler_step_failed' => array( 'error', __( 'Step failed or queue is empty.', 'xophz-compass-card-vault' ) ),
+			'catalog_saved'       => array( 'success', __( 'Catalog preferences saved successfully.', 'xophz-compass-card-vault' ) ),
+			'consignor_added'     => array( 'success', __( 'Consignor registered successfully.', 'xophz-compass-card-vault' ) ),
+			'payout_marked_paid'  => array( 'success', __( 'Payout marked as paid.', 'xophz-compass-card-vault' ) ),
+		);
+		$cv_notice = $cv_notices[ $cv_msg_type ] ?? null;
+		?>
+		<?php if ( $cv_notice ) : ?>
+			<div class="notice notice-<?php echo esc_attr( $cv_notice[0] ); ?> is-dismissible" style="margin: 16px 0;">
+				<p><?php echo esc_html( $cv_notice[1] ); ?></p>
+			</div>
+		<?php endif; ?>
+	<?php endif; ?>
+
 	<!-- Top Metrics -->
 	<div class="cv-metric-grid">
 		<div class="cv-metric-card">

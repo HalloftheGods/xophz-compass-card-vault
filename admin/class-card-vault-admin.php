@@ -334,7 +334,7 @@ class Card_Vault_Admin {
 		}
 
 		// 4. Crawler Control Actions
-		if ( in_array( $action, array( 'start_crawler_action', 'pause_crawler_action', 'reset_crawler_action' ), true ) ) {
+		if ( in_array( $action, array( 'start_crawler_action', 'pause_crawler_action', 'reset_crawler_action', 'step_crawler_action' ), true ) ) {
 			check_admin_referer( 'cv_crawler_action_nonce' );
 
 			if ( ! current_user_can( 'manage_card_vault' ) && ! current_user_can( 'manage_options' ) ) {
@@ -342,9 +342,21 @@ class Card_Vault_Admin {
 			}
 
 			if ( 'start_crawler_action' === $action ) {
-				$force = ! empty( $_POST['force_crawl'] );
-				Card_Vault_Catalog_Crawler::start_crawler( array( 'force' => $force ) );
+				$force         = ! empty( $_POST['force_crawl'] );
+				$target_hours  = isset( $_POST['target_hours'] ) ? max( 0.5, (float) $_POST['target_hours'] ) : Card_Vault_Catalog_Crawler::DEFAULT_TARGET_HOURS;
+				$delay_seconds = isset( $_POST['delay_seconds'] ) ? max( Card_Vault_Catalog_Crawler::MIN_DELAY_SECONDS, (int) $_POST['delay_seconds'] ) : 15;
+				$batch_size    = isset( $_POST['batch_size'] ) ? sanitize_text_field( $_POST['batch_size'] ) : '';
+
+				Card_Vault_Catalog_Crawler::start_crawler( array(
+					'force'         => $force,
+					'target_hours'  => $target_hours,
+					'delay_seconds' => $delay_seconds,
+					'batch_size'    => $batch_size,
+				) );
 				$msg = 'crawler_started';
+			} elseif ( 'step_crawler_action' === $action ) {
+				$step_result = Card_Vault_Catalog_Crawler::process_next_step( true );
+				$msg         = ! empty( $step_result['success'] ) ? 'crawler_stepped' : 'crawler_step_failed';
 			} elseif ( 'pause_crawler_action' === $action ) {
 				Card_Vault_Catalog_Crawler::pause_crawler();
 				$msg = 'crawler_paused';

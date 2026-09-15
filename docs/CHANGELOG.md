@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ## [2026-09-14]
 
 ### Added
+- **WP Admin Dealer HQ Crawler Queue Controls**: Added comprehensive crawler queue orchestration to `admin/partials/catalog-sync-display.php` matching the frontend app, including configurable Batch Size (5, 10, 20, 25, 50, all sets), Polite Throttle Delay / Buffer (5s, 15s, 30s, 60s, 120s, 300s), and Target Completion Duration (0.5 to 72 hours).
+- **Manual Single-Step Action (`step_crawler_action`)**: Added `step_crawler_action` in `admin/class-card-vault-admin.php` and updated `process_next_step( true )` in `includes/class-card-vault-catalog-crawler.php`, allowing administrators to manually ingest exactly 1 pending set on demand without triggering continuous background cron loops.
+- **Active Queue Manifest Inspector**: Added real-time queue manifest table in `admin/partials/catalog-sync-display.php` displaying pending, processing, completed, and failed sets with badges, category titles, and imported card counters.
+- **Live Throttle Buffer & ETA Telemetry**: Added `eta_formatted` localization in `includes/class-card-vault-catalog-crawler.php` and buffer delay countdown display in `admin/partials/catalog-sync-display.php`.
+- **Admin Feedback Notice Banners**: Added interactive dismissible alert banners in `admin/partials/dealer-portal-display.php` for `crawler_started`, `crawler_paused`, `crawler_stepped`, `crawler_reset`, and configuration updates.
+- **MySQL Fast Path C & D Search Indexes**: Added Fast Path C (matching keyword with single card numbers like `Charizard 4` or promo codes without requiring a total set denominator) and Fast Path D (direct indexed lookups for standalone promo or set numbers like `SWSH020` or `TG01`) in `includes/class-card-vault-catalog-db.php`.
 - **Subsite-Isolated MySQL Catalog Engine**: Refactored `includes/class-card-vault-catalog-db.php` from SQLite PDO to WordPress native MySQL (`$wpdb->prefix . 'card_vault_cards'`), establishing 100% compatibility with WPMU DEV managed hosting environments lacking `pdo_sqlite`. Features B-tree indexes on card lookups and native MySQL `FULLTEXT` indexing on `(name, clean_name, group_name)`.
 - **Selective Sync Sets Table**: Added `{$wpdb->prefix}card_vault_sync_sets` table in `includes/class-card-vault-catalog-db.php` tracking per-set sync status, card counts, priorities, and enabled toggles.
 - **Dealer HQ Catalog & Sync Dashboard**: Created `admin/partials/catalog-sync-display.php` and integrated `Catalog & Sync` tab in `admin/partials/dealer-portal-display.php` providing real-time telemetry (card count, table MB, engine status), crawler controls (Start, Pause, Resume, Reset), category prioritization chips, and set scope selector (Latest 10, 25, 50, or All sets).
@@ -13,6 +19,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - **Admin Form Handlers**: Added `save_catalog_sync_settings`, `start_crawler_action`, `pause_crawler_action`, and `reset_crawler_action` in `admin/class-card-vault-admin.php`.
 
 ### Changed
+- **TCGPlayer 1000w High-Res Resolution Normalization**: Added automatic URL rewriting in `includes/class-card-vault-catalog-importer.php` and `includes/class-card-vault-catalog-db.php` upgrading low-res `_200w.jpg` and `fit-in/200x200` to `_1000w.jpg` and `fit-in/1000x1000/`, providing crisp Retina image delivery without increasing database storage.
 - **Crawler Manifest Filtering**: Updated `build_manifest()` in `includes/class-card-vault-catalog-crawler.php` to respect subsite configured category IDs, active set scope limits, and disabled set exclusions before queuing.
 - **Batch Card Upsert Optimization**: Updated `import_group_from_tcgcsv()` in `includes/class-card-vault-catalog-importer.php` to use `Card_Vault_Catalog_DB::batch_upsert_cards()` via MySQL `INSERT ... ON DUPLICATE KEY UPDATE` with 200-card chunking.
 - **WP-CLI Status Output**: Updated `wp card-vault status` in `includes/class-card-vault-catalog-cli.php` to report MySQL InnoDB storage metrics, table name, and card counts.

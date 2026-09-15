@@ -112,11 +112,12 @@ class Card_Vault_Catalog_Crawler {
 	/**
 	 * Build complete queue manifest across specified or all categories.
 	 *
-	 * @param array<int> $category_ids List of category IDs to crawl (empty = all).
-	 * @param bool       $force Re-import sets already in SQLite.
+	 * @param array<int>   $category_ids List of category IDs to crawl (empty = all).
+	 * @param bool         $force Re-import sets already in MySQL.
+	 * @param string|null  $scope_override Optional sets scope override (e.g. 5, 10, 20, 50, all).
 	 * @return array Manifest breakdown and pending queue.
 	 */
-	public static function build_manifest( array $category_ids = array(), bool $force = false ): array {
+	public static function build_manifest( array $category_ids = array(), bool $force = false, ?string $scope_override = null ): array {
 		$all_categories = self::get_available_categories();
 		$target_categories = array();
 
@@ -158,7 +159,7 @@ class Card_Vault_Catalog_Crawler {
 			$disabled_gids = array_flip( array_map( 'intval', $disabled_rows ?: array() ) );
 		}
 
-		$scope = Card_Vault_Catalog_DB::get_sets_scope();
+		$scope = $scope_override !== null ? $scope_override : Card_Vault_Catalog_DB::get_sets_scope();
 
 		$queue = array();
 		$category_summaries = array();
@@ -236,7 +237,7 @@ class Card_Vault_Catalog_Crawler {
 	/**
 	 * Start or restart the catalog crawler with mathematical pacing.
 	 *
-	 * @param array $config Crawler options (target_hours, delay_seconds, category_ids, force).
+	 * @param array $config Crawler options (target_hours, delay_seconds, category_ids, force, batch_size).
 	 * @return array Initialized crawler state.
 	 */
 	public static function start_crawler( array $config = array() ): array {
@@ -244,9 +245,14 @@ class Card_Vault_Catalog_Crawler {
 		$custom_delay = isset( $config['delay_seconds'] ) ? max( self::MIN_DELAY_SECONDS, (int) $config['delay_seconds'] ) : null;
 		$category_ids = isset( $config['category_ids'] ) && is_array( $config['category_ids'] ) ? array_map( 'intval', $config['category_ids'] ) : array();
 		$force        = ! empty( $config['force'] );
+		$batch_size   = isset( $config['batch_size'] ) && '' !== $config['batch_size'] ? sanitize_text_field( $config['batch_size'] ) : null;
+
+		if ( ! empty( $batch_size ) ) {
+			Card_Vault_Catalog_DB::set_sets_scope( $batch_size );
+		}
 
 		// Build fresh queue manifest
-		$manifest = self::build_manifest( $category_ids, $force );
+		$manifest = self::build_manifest( $category_ids, $force, $batch_size );
 		$remaining = $manifest['remaining_groups'];
 
 		// Calculate mathematical delay interval
@@ -302,11 +308,21 @@ class Card_Vault_Catalog_Crawler {
 	/**
 	 * Process the next pending group in queue.
 	 *
+	 * @param bool $force_step Allow manual execution of a single set even if paused/idle.
 	 * @return array Step execution result.
 	 */
-	public static function process_next_step(): array {
-		$state = self::get_raw_state();
-		$is_active = isset( $state['status'] ) && $state['status'] === 'running';
+	public static function process_next_step( bool $force_step = false ): array {
+		$state  = self::get_raw_state();
+		$status = $state['status'] ?? 'idle';
+
+		if ( $force_step && ( empty( $state['queue'] ) || 'idle' === $status ) ) {
+			self::start_crawler( array( 'force' => false ) );
+			self::pause_crawler();
+			$state  = self::get_raw_state();
+			$status = 'paused';
+		}
+
+		$is_active = in_array( $status, array( 'running', 'paused' ), true );
 
 		if ( ! $is_active || empty( $state['queue'] ) ) {
 			return array( 'success' => false, 'message' => 'Crawler is not running or queue is empty.' );
@@ -377,7 +393,7 @@ class Card_Vault_Catalog_Crawler {
 
 		if ( $has_more_items ) {
 			$next_run = $now + $delay_sec;
-			$state['next_run_timestamp'] = $next_run;
+			$state['next_run_timestamp'] = ( 'running' === $status && ! $force_step ) ? $next_run : null;
 			$state['eta_timestamp']      = $now + ( $state['remaining_groups'] * $delay_sec );
 
 			// Find next pending group name for telemetry
@@ -393,9 +409,11 @@ class Card_Vault_Catalog_Crawler {
 
 			update_option( self::STATE_OPTION, $state );
 
-			// Schedule next single-event step
-			wp_clear_scheduled_hook( self::CRON_HOOK_STEP );
-			wp_schedule_single_event( $next_run, self::CRON_HOOK_STEP );
+			// Schedule next single-event step only when actively running in background
+			if ( 'running' === $status && ! $force_step ) {
+				wp_clear_scheduled_hook( self::CRON_HOOK_STEP );
+				wp_schedule_single_event( $next_run, self::CRON_HOOK_STEP );
+			}
 		} else {
 			$state['status']             = 'completed';
 			$state['next_run_timestamp'] = null;
@@ -530,6 +548,9 @@ class Card_Vault_Catalog_Crawler {
 		$queue = $state['queue'] ?? array();
 		$recent_queue = array_slice( $queue, 0, 150 );
 
+		$eta_timestamp = isset( $state['eta_timestamp'] ) ? (int) $state['eta_timestamp'] : 0;
+		$eta_formatted = $eta_timestamp > 0 ? wp_date( 'M j, Y g:i A', $eta_timestamp ) : '';
+
 		return array(
 			'status'                => (string) ( $state['status'] ?? 'idle' ),
 			'total_categories'      => (int) ( $state['total_categories'] ?? 0 ),
@@ -545,7 +566,8 @@ class Card_Vault_Catalog_Crawler {
 			'last_processed_at'     => $state['last_processed_at'] ?? null,
 			'next_run_timestamp'    => $next_run > 0 ? $next_run : null,
 			'seconds_until_next'    => $seconds_until_next,
-			'eta_timestamp'         => $state['eta_timestamp'] ?? null,
+			'eta_timestamp'         => $eta_timestamp > 0 ? $eta_timestamp : null,
+			'eta_formatted'         => $eta_formatted,
 			'current_category_id'   => $state['current_category_id'] ?? null,
 			'current_category_name' => $state['current_category_name'] ?? '',
 			'current_group_id'      => $state['current_group_id'] ?? null,

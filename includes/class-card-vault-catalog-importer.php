@@ -386,6 +386,10 @@ class Card_Vault_Catalog_Importer {
 				$direct_low   = isset( $cols['directLowPrice'] ) && is_numeric( $row[ $cols['directLowPrice'] ] ) ? (float) $row[ $cols['directLowPrice'] ] : null;
 
 				$image_url    = isset( $cols['imageUrl'] ) ? trim( (string) ( $row[ $cols['imageUrl'] ] ?? '' ) ) : '';
+				if ( ! empty( $image_url ) ) {
+					$image_url = preg_replace( '/_200w\.jpg$/i', '_1000w.jpg', $image_url );
+					$image_url = preg_replace( '/fit-in\/\d+x\d+\//i', 'fit-in/1000x1000/', $image_url );
+				}
 				$tcg_url      = isset( $cols['url'] ) ? trim( (string) ( $row[ $cols['url'] ] ?? '' ) ) : '';
 
 				$cards_batch[] = array(

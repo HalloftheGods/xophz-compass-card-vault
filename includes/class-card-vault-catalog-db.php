@@ -167,6 +167,40 @@ class Card_Vault_Catalog_DB {
 	 * @param int    $offset Result offset for pagination (default: 0).
 	 * @return array List of matched cards.
 	 */
+	/**
+	 * Normalize card record fields before returning to caller.
+	 * Upgrades TCGPlayer 200w thumbnail URLs to 1000w high-resolution.
+	 *
+	 * @param array $card Raw database card row.
+	 * @return array Normalized card row.
+	 */
+	public static function format_card_row( array $card ): array {
+		if ( ! empty( $card['image_url'] ) ) {
+			$card['image_url'] = preg_replace( '/_200w\.jpg$/i', '_1000w.jpg', $card['image_url'] );
+			$card['image_url'] = preg_replace( '/fit-in\/\d+x\d+\//i', 'fit-in/1000x1000/', $card['image_url'] );
+		}
+		return $card;
+	}
+
+	/**
+	 * Normalize an array of card records.
+	 *
+	 * @param array $cards List of card records.
+	 * @return array Normalized list.
+	 */
+	public static function format_card_rows( array $cards ): array {
+		return array_map( array( __CLASS__, 'format_card_row' ), $cards );
+	}
+
+	/**
+	 * Perform high-speed search across indexed cards.
+	 *
+	 * @param string $query User search string.
+	 * @param array  $filters Optional filters.
+	 * @param int    $limit Max rows.
+	 * @param int    $offset Pagination offset.
+	 * @return array List of card records.
+	 */
 	public static function search_cards( string $query, array $filters = array(), int $limit = 25, int $offset = 0 ): array {
 		global $wpdb;
 		$table   = self::get_table_name();
@@ -190,7 +224,7 @@ class Card_Vault_Catalog_DB {
 			$sql = $wpdb->prepare( "SELECT * FROM {$table} WHERE {$where} LIMIT %d OFFSET %d", array_merge( $args, array( $limit, $offset ) ) );
 			$results = $wpdb->get_results( $sql, ARRAY_A );
 			if ( ! empty( $results ) ) {
-				return $results;
+				return self::format_card_rows( $results );
 			}
 		}
 
@@ -208,7 +242,44 @@ class Card_Vault_Catalog_DB {
 			$sql = $wpdb->prepare( "SELECT * FROM {$table} WHERE {$where} LIMIT %d OFFSET %d", array_merge( $args, array( $limit, $offset ) ) );
 			$results = $wpdb->get_results( $sql, ARRAY_A );
 			if ( ! empty( $results ) ) {
-				return $results;
+				return self::format_card_rows( $results );
+			}
+		}
+
+		// Fast Path C: Number with keyword but no set total (e.g. "Charizard 4" or "Pikachu SWSH020")
+		if ( $intent['has_number_intent'] && ! empty( $intent['clean_keyword'] ) && $intent['target_total'] === null ) {
+			$clean_kw = preg_replace( '/[+\-><()~*\"@]+/', '', $intent['clean_keyword'] );
+			if ( strlen( $clean_kw ) > 0 ) {
+				$where = 'MATCH(name, clean_name, group_name) AGAINST(%s IN BOOLEAN MODE) AND (numeric_number = %d OR clean_number = %s OR raw_number = %s)';
+				$args  = array( "+{$clean_kw}*", $intent['target_number'] ?? 0, $intent['target_clean'], $intent['target_clean'] );
+
+				if ( ! empty( $filters['category_id'] ) ) {
+					$where .= ' AND category_id = %d';
+					$args[] = (int) $filters['category_id'];
+				}
+
+				$sql = $wpdb->prepare( "SELECT * FROM {$table} WHERE {$where} ORDER BY market_price DESC LIMIT %d OFFSET %d", array_merge( $args, array( $limit, $offset ) ) );
+				$results = $wpdb->get_results( $sql, ARRAY_A );
+				if ( ! empty( $results ) ) {
+					return self::format_card_rows( $results );
+				}
+			}
+		}
+
+		// Fast Path D: Standalone promo or card code (e.g. "SWSH020", "TG01")
+		if ( $intent['has_number_intent'] && empty( $intent['clean_keyword'] ) && $intent['target_total'] === null && ! empty( $intent['target_clean'] ) ) {
+			$where = 'clean_number = %s OR raw_number = %s';
+			$args  = array( $intent['target_clean'], $intent['target_clean'] );
+
+			if ( ! empty( $filters['category_id'] ) ) {
+				$where .= ' AND category_id = %d';
+				$args[] = (int) $filters['category_id'];
+			}
+
+			$sql = $wpdb->prepare( "SELECT * FROM {$table} WHERE {$where} ORDER BY market_price DESC LIMIT %d OFFSET %d", array_merge( $args, array( $limit, $offset ) ) );
+			$results = $wpdb->get_results( $sql, ARRAY_A );
+			if ( ! empty( $results ) ) {
+				return self::format_card_rows( $results );
 			}
 		}
 
@@ -233,7 +304,8 @@ class Card_Vault_Catalog_DB {
 			$sql = empty( $args )
 				? $wpdb->prepare( "SELECT * FROM {$table} WHERE {$where} ORDER BY market_price DESC, name ASC LIMIT %d OFFSET %d", $limit, $offset )
 				: $wpdb->prepare( "SELECT * FROM {$table} WHERE {$where} ORDER BY market_price DESC, name ASC LIMIT %d OFFSET %d", array_merge( $args, array( $limit, $offset ) ) );
-			return $wpdb->get_results( $sql, ARRAY_A ) ?: array();
+			$raw_rows = $wpdb->get_results( $sql, ARRAY_A ) ?: array();
+			return self::format_card_rows( $raw_rows );
 		}
 
 		// Standard Path: FULLTEXT Boolean search
@@ -283,7 +355,7 @@ class Card_Vault_Catalog_DB {
 			$results  = $wpdb->get_results( $like_sql, ARRAY_A );
 		}
 
-		return $results ?: array();
+		return self::format_card_rows( $results ?: array() );
 	}
 
 	/**
@@ -400,7 +472,7 @@ class Card_Vault_Catalog_DB {
 		global $wpdb;
 		$table = self::get_table_name();
 		$card  = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM {$table} WHERE id = %s LIMIT 1", $id ), ARRAY_A );
-		return $card ?: null;
+		return $card ? self::format_card_row( $card ) : null;
 	}
 
 	/**
@@ -413,7 +485,7 @@ class Card_Vault_Catalog_DB {
 		global $wpdb;
 		$table = self::get_table_name();
 		$card  = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM {$table} WHERE tcgplayer_id = %d LIMIT 1", $tcgplayer_id ), ARRAY_A );
-		return $card ?: null;
+		return $card ? self::format_card_row( $card ) : null;
 	}
 
 	/**
