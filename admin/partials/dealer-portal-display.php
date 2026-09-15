@@ -78,6 +78,9 @@ $app_url      = home_url( '/' . $slug );
 		<a href="<?php echo esc_url( add_query_arg( 'tab', 'payouts', $portal_url ) ); ?>" class="nav-tab <?php echo 'payouts' === $active_tab ? 'nav-tab-active' : ''; ?>">
 			Payouts Ledger (<?php echo esc_html( count( $payouts ) ); ?>)
 		</a>
+		<a href="<?php echo esc_url( add_query_arg( 'tab', 'catalog', $portal_url ) ); ?>" class="nav-tab <?php echo 'catalog' === $active_tab ? 'nav-tab-active' : ''; ?>">
+			Catalog & Sync
+		</a>
 		<a href="<?php echo esc_url( add_query_arg( 'tab', 'settings', $portal_url ) ); ?>" class="nav-tab <?php echo 'settings' === $active_tab ? 'nav-tab-active' : ''; ?>">
 			Settings & Integration
 		</a>
@@ -331,5 +334,7 @@ $app_url      = home_url( '/' . $slug );
 				</table>
 			</div>
 		</div>
+	<?php elseif ( 'catalog' === $active_tab ) : ?>
+		<?php require_once XOPHZ_COMPASS_CARD_VAULT_PATH . 'admin/partials/catalog-sync-display.php'; ?>
 	<?php endif; ?>
 </div>

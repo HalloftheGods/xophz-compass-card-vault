@@ -304,6 +304,66 @@ class Card_Vault_Admin {
 			wp_safe_redirect( $redirect_url );
 			exit;
 		}
+
+		// 3. Save Catalog Sync Settings
+		if ( 'save_catalog_sync_settings' === $action ) {
+			check_admin_referer( 'cv_catalog_settings_nonce' );
+
+			if ( ! current_user_can( 'manage_card_vault' ) && ! current_user_can( 'manage_options' ) ) {
+				wp_die( esc_html__( 'Permission denied.', 'xophz-compass-card-vault' ) );
+			}
+
+			$categories = isset( $_POST['categories'] ) && is_array( $_POST['categories'] )
+				? array_map( 'intval', $_POST['categories'] )
+				: array( 3 );
+			$sets_scope = isset( $_POST['sets_scope'] ) ? sanitize_text_field( $_POST['sets_scope'] ) : '25';
+
+			Card_Vault_Catalog_DB::set_selected_categories( $categories );
+			Card_Vault_Catalog_DB::set_sets_scope( $sets_scope );
+
+			$redirect_url = add_query_arg(
+				array(
+					'page'   => 'xophz-compass-card-vault',
+					'tab'    => 'catalog',
+					'cv_msg' => 'catalog_saved',
+				),
+				admin_url( 'admin.php' )
+			);
+			wp_safe_redirect( $redirect_url );
+			exit;
+		}
+
+		// 4. Crawler Control Actions
+		if ( in_array( $action, array( 'start_crawler_action', 'pause_crawler_action', 'reset_crawler_action' ), true ) ) {
+			check_admin_referer( 'cv_crawler_action_nonce' );
+
+			if ( ! current_user_can( 'manage_card_vault' ) && ! current_user_can( 'manage_options' ) ) {
+				wp_die( esc_html__( 'Permission denied.', 'xophz-compass-card-vault' ) );
+			}
+
+			if ( 'start_crawler_action' === $action ) {
+				$force = ! empty( $_POST['force_crawl'] );
+				Card_Vault_Catalog_Crawler::start_crawler( array( 'force' => $force ) );
+				$msg = 'crawler_started';
+			} elseif ( 'pause_crawler_action' === $action ) {
+				Card_Vault_Catalog_Crawler::pause_crawler();
+				$msg = 'crawler_paused';
+			} else {
+				Card_Vault_Catalog_Crawler::reset_crawler();
+				$msg = 'crawler_reset';
+			}
+
+			$redirect_url = add_query_arg(
+				array(
+					'page'   => 'xophz-compass-card-vault',
+					'tab'    => 'catalog',
+					'cv_msg' => $msg,
+				),
+				admin_url( 'admin.php' )
+			);
+			wp_safe_redirect( $redirect_url );
+			exit;
+		}
 	}
 
 	/**

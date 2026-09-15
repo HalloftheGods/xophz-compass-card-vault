@@ -218,13 +218,12 @@ class Card_Vault_Catalog_CLI {
 		$version      = get_option( 'card_vault_catalog_version', 'local' );
 
 		WP_CLI::log( '=========================================' );
-		WP_CLI::log( '  Card Vault SQLite Catalog Status' );
+		WP_CLI::log( '  Card Vault Catalog Status' );
 		WP_CLI::log( '=========================================' );
-		WP_CLI::log( 'File Exists:   ' . ( $status['exists'] ? 'YES' : 'NO' ) );
-		WP_CLI::log( 'Path:          ' . $status['path'] );
-		WP_CLI::log( 'File Size:     ' . $status['size_mb'] . ' MB (' . number_format( $status['size_bytes'] ) . ' bytes)' );
-		WP_CLI::log( 'WAL Size:      ' . number_format( $status['wal_bytes'] ) . ' bytes' );
-		WP_CLI::log( 'Total Cards:   ' . number_format( $status['total_cards'] ) );
+		WP_CLI::log( 'Engine:        ' . ( $status['driver'] ?? 'WordPress MySQL' ) );
+		WP_CLI::log( 'Table:         ' . ( $status['table'] ?? 'card_vault_cards' ) );
+		WP_CLI::log( 'Table Size:    ' . ( $status['size_mb'] ?? 0 ) . ' MB' );
+		WP_CLI::log( 'Total Cards:   ' . number_format( (int) ( $status['total_cards'] ?? 0 ) ) );
 		WP_CLI::log( 'Last Updated:  ' . ( $status['last_updated'] ?: 'Never' ) );
 		WP_CLI::log( 'Last Checked:  ' . ( $last_checked ? date( 'Y-m-d H:i:s', (int) $last_checked ) : 'Never' ) );
 		WP_CLI::log( 'Last Synced:   ' . ( $last_synced ? date( 'Y-m-d H:i:s', (int) $last_synced ) : 'Never' ) );

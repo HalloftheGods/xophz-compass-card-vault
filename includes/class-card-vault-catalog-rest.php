@@ -138,6 +138,24 @@ class Card_Vault_Catalog_REST {
 				)
 			);
 
+			// 6b. Catalog Sync Ingestion Settings
+			register_rest_route(
+				$ns,
+				'/catalog/sync/settings',
+				array(
+					array(
+						'methods'             => WP_REST_Server::READABLE,
+						'callback'            => array( __CLASS__, 'handle_get_sync_settings' ),
+						'permission_callback' => array( __CLASS__, 'check_read_permission' ),
+					),
+					array(
+						'methods'             => WP_REST_Server::CREATABLE,
+						'callback'            => array( __CLASS__, 'handle_update_sync_settings' ),
+						'permission_callback' => array( __CLASS__, 'check_admin_permission' ),
+					),
+				)
+			);
+
 			// 7. Crawler Live Telemetry & Progress
 			register_rest_route(
 				$ns,
@@ -748,6 +766,43 @@ class Card_Vault_Catalog_REST {
 			'success' => true,
 			'message' => __( 'Image cache purged.', 'xophz-compass-card-vault' ),
 			'result'  => $result,
+		) );
+	}
+
+	/**
+	 * Get subsite selective catalog sync ingestion settings.
+	 *
+	 * @param WP_REST_Request $request
+	 * @return WP_REST_Response
+	 */
+	public static function handle_get_sync_settings( WP_REST_Request $request ): WP_REST_Response {
+		return rest_ensure_response( array(
+			'success'              => true,
+			'selected_categories'  => Card_Vault_Catalog_DB::get_selected_categories(),
+			'sets_scope'           => Card_Vault_Catalog_DB::get_sets_scope(),
+			'available_categories' => Card_Vault_Catalog_Crawler::get_available_categories(),
+		) );
+	}
+
+	/**
+	 * Update subsite selective catalog sync ingestion settings.
+	 *
+	 * @param WP_REST_Request $request
+	 * @return WP_REST_Response
+	 */
+	public static function handle_update_sync_settings( WP_REST_Request $request ): WP_REST_Response {
+		if ( $request->get_param( 'category_ids' ) && is_array( $request->get_param( 'category_ids' ) ) ) {
+			Card_Vault_Catalog_DB::set_selected_categories( $request->get_param( 'category_ids' ) );
+		}
+		if ( $request->get_param( 'sets_scope' ) ) {
+			Card_Vault_Catalog_DB::set_sets_scope( (string) $request->get_param( 'sets_scope' ) );
+		}
+
+		return rest_ensure_response( array(
+			'success'             => true,
+			'message'             => __( 'Sync settings updated.', 'xophz-compass-card-vault' ),
+			'selected_categories' => Card_Vault_Catalog_DB::get_selected_categories(),
+			'sets_scope'          => Card_Vault_Catalog_DB::get_sets_scope(),
 		) );
 	}
 }

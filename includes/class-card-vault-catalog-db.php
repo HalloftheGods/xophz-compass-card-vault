@@ -1,9 +1,10 @@
 <?php
 /**
- * SQLite High-Performance TCG Catalog Database Manager.
+ * Subsite-Isolated MySQL High-Performance TCG Catalog Database Manager.
  *
- * Manages the local SQLite database connection, schema initialization,
- * WAL configuration, B-Tree indexes, and the two-stage smart search resolver.
+ * Manages the WordPress MySQL database tables for Card Vault catalog,
+ * subsite prefix isolation, B-Tree and FULLTEXT indexes, two-stage smart search,
+ * and selective category/set ingestion.
  *
  * @package    Xophz_Compass_Card_Vault
  * @subpackage Xophz_Compass_Card_Vault/includes
@@ -15,191 +16,150 @@ if ( ! defined( 'ABSPATH' ) && ! defined( 'WPINC' ) ) {
 
 class Card_Vault_Catalog_DB {
 
-	const DB_FILENAME = 'cards.db';
-	const UPLOADS_SUBDIR = 'card-vault';
+	const OPTION_SELECTED_CATEGORIES = 'card_vault_catalog_selected_categories';
+	const OPTION_SETS_SCOPE          = 'card_vault_catalog_sets_scope';
 
 	/**
-	 * Singleton PDO instance.
+	 * Get the subsite-isolated cards table name.
 	 *
-	 * @var PDO|null
+	 * @return string Full table name with subsite prefix.
 	 */
-	private static ?PDO $pdo = null;
-
-	/**
-	 * Get the absolute filesystem path to the cards.db SQLite file.
-	 *
-	 * @return string Absolute file path.
-	 */
-	public static function get_db_path(): string {
-		if ( function_exists( 'wp_upload_dir' ) ) {
-			$upload_dir = wp_upload_dir();
-			$dir = trailingslashit( $upload_dir['basedir'] ) . self::UPLOADS_SUBDIR;
-		} else {
-			$dir = dirname( __DIR__ ) . '/data/' . self::UPLOADS_SUBDIR;
-		}
-
-		return $dir . '/' . self::DB_FILENAME;
+	public static function get_table_name(): string {
+		global $wpdb;
+		return $wpdb->prefix . 'card_vault_cards';
 	}
 
 	/**
-	 * Get the directory path for the card-vault uploads storage.
+	 * Get the subsite-isolated sync sets table name.
+	 *
+	 * @return string Full table name with subsite prefix.
+	 */
+	public static function get_sets_table_name(): string {
+		global $wpdb;
+		return $wpdb->prefix . 'card_vault_sync_sets';
+	}
+
+	/**
+	 * Compatibility stub for legacy SQLite path callers.
+	 *
+	 * @return string Empty or legacy path string.
+	 */
+	public static function get_db_path(): string {
+		return '';
+	}
+
+	/**
+	 * Compatibility stub for legacy SQLite dir callers.
 	 *
 	 * @return string Directory path.
 	 */
 	public static function get_db_dir(): string {
-		return dirname( self::get_db_path() );
+		if ( function_exists( 'wp_upload_dir' ) ) {
+			$upload_dir = wp_upload_dir();
+			return trailingslashit( $upload_dir['basedir'] ) . 'card-vault';
+		}
+		return dirname( __DIR__ ) . '/data/card-vault';
 	}
 
 	/**
-	 * Ensure storage directory exists with security guards.
+	 * Compatibility stub for storage directory checks.
 	 */
 	public static function ensure_storage_directory(): void {
 		$dir = self::get_db_dir();
 		if ( ! is_dir( $dir ) ) {
 			wp_mkdir_p( $dir );
 		}
-
-		// Write .htaccess guard to block direct HTTP downloads
-		$htaccess_file = $dir . '/.htaccess';
-		if ( ! file_exists( $htaccess_file ) ) {
-			@file_put_contents( $htaccess_file, "Order deny,allow\nDeny from all\n" );
-		}
-
-		// Write blank index.php fallback
-		$index_file = $dir . '/index.php';
-		if ( ! file_exists( $index_file ) ) {
-			@file_put_contents( $index_file, "<?php\n// Silence is golden.\n" );
-		}
 	}
 
 	/**
-	 * Get or initialize PDO connection to SQLite database.
+	 * Compatibility stub for legacy get_connection callers.
 	 *
-	 * @return PDO
-	 * @throws PDOException If connection fails.
+	 * @return null
 	 */
-	public static function get_connection(): PDO {
-		if ( self::$pdo !== null ) {
-			return self::$pdo;
-		}
-
-		self::ensure_storage_directory();
-		$path = self::get_db_path();
-
-		$pdo = new PDO( 'sqlite:' . $path, null, null, array(
-			PDO::ATTR_ERRMODE            => PDO::ERRMODE_EXCEPTION,
-			PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
-			PDO::ATTR_TIMEOUT            => 5,
-		) );
-
-		// Performance Pragmas
-		$pdo->exec( 'PRAGMA journal_mode = WAL;' );
-		$pdo->exec( 'PRAGMA synchronous = NORMAL;' );
-		$pdo->exec( 'PRAGMA cache_size = -16000;' ); // 16MB page cache
-		$pdo->exec( 'PRAGMA foreign_keys = ON;' );
-		$pdo->exec( 'PRAGMA temp_store = MEMORY;' );
-
-		self::$pdo = $pdo;
-		return self::$pdo;
+	public static function get_connection() {
+		return null;
 	}
 
 	/**
-	 * Initialize tables, B-tree indexes, and FTS5 structures.
+	 * Initialize MySQL tables, B-tree indexes, and FULLTEXT structures.
 	 */
 	public static function ensure_database(): void {
-		$pdo = self::get_connection();
+		global $wpdb;
+		require_once ABSPATH . 'wp-admin/includes/upgrade.php';
 
-		// 1. Core Cards Table
-		$pdo->exec( '
-			CREATE TABLE IF NOT EXISTS cards (
-				id TEXT PRIMARY KEY,
-				tcgplayer_id INTEGER UNIQUE NOT NULL,
-				category_id INTEGER NOT NULL,
-				category_name TEXT NOT NULL,
-				group_id INTEGER NOT NULL,
-				group_name TEXT NOT NULL,
-				group_abbrev TEXT,
-				name TEXT NOT NULL,
-				clean_name TEXT NOT NULL,
-				sub_type_name TEXT DEFAULT "Normal",
+		$charset_collate = $wpdb->get_charset_collate();
+		$cards_table     = self::get_table_name();
+		$sets_table      = self::get_sets_table_name();
 
-				raw_number TEXT,
-				clean_number TEXT,
-				numeric_number INTEGER,
-				number_prefix TEXT,
-				total_set_number INTEGER,
-				number_variants TEXT,
+		$sql_cards = "CREATE TABLE {$cards_table} (
+			id varchar(64) NOT NULL,
+			tcgplayer_id bigint(20) UNSIGNED NOT NULL,
+			category_id bigint(20) UNSIGNED NOT NULL,
+			category_name varchar(100) NOT NULL,
+			group_id bigint(20) UNSIGNED NOT NULL,
+			group_name varchar(150) NOT NULL,
+			group_abbrev varchar(50) DEFAULT NULL,
+			name varchar(255) NOT NULL,
+			clean_name varchar(255) NOT NULL,
+			sub_type_name varchar(100) DEFAULT 'Normal',
+			raw_number varchar(50) DEFAULT NULL,
+			clean_number varchar(50) DEFAULT NULL,
+			numeric_number int(11) DEFAULT NULL,
+			number_prefix varchar(20) DEFAULT NULL,
+			total_set_number int(11) DEFAULT NULL,
+			number_variants text DEFAULT NULL,
+			rarity varchar(100) DEFAULT NULL,
+			card_type varchar(100) DEFAULT NULL,
+			stage_or_subtype varchar(100) DEFAULT NULL,
+			hp int(11) DEFAULT NULL,
+			card_text text DEFAULT NULL,
+			upc varchar(50) DEFAULT NULL,
+			market_price decimal(10,2) DEFAULT 0.00,
+			low_price decimal(10,2) DEFAULT 0.00,
+			mid_price decimal(10,2) DEFAULT 0.00,
+			high_price decimal(10,2) DEFAULT 0.00,
+			direct_low_price decimal(10,2) DEFAULT NULL,
+			updated_at bigint(20) NOT NULL,
+			image_url text DEFAULT NULL,
+			tcgplayer_url text DEFAULT NULL,
+			PRIMARY KEY  (id),
+			UNIQUE KEY tcgplayer_id (tcgplayer_id),
+			KEY idx_numeric_lookup (numeric_number, clean_number),
+			KEY idx_group_number (group_id, numeric_number),
+			KEY idx_category_group (category_id, group_id),
+			KEY idx_upc (upc)
+		) ENGINE=InnoDB {$charset_collate};";
 
-				rarity TEXT,
-				card_type TEXT,
-				stage_or_subtype TEXT,
-				hp INTEGER,
-				card_text TEXT,
-				upc TEXT,
+		$sql_sets = "CREATE TABLE {$sets_table} (
+			group_id bigint(20) UNSIGNED NOT NULL,
+			category_id bigint(20) UNSIGNED NOT NULL,
+			group_name varchar(150) NOT NULL,
+			category_name varchar(100) NOT NULL,
+			is_enabled tinyint(1) NOT NULL DEFAULT 1,
+			priority int(11) NOT NULL DEFAULT 10,
+			card_count int(11) NOT NULL DEFAULT 0,
+			last_synced_at datetime DEFAULT NULL,
+			sync_status varchar(50) NOT NULL DEFAULT 'pending',
+			PRIMARY KEY  (group_id),
+			KEY idx_cat_enabled (category_id, is_enabled),
+			KEY idx_priority (priority, group_id)
+		) ENGINE=InnoDB {$charset_collate};";
 
-				market_price REAL DEFAULT 0.00,
-				low_price REAL DEFAULT 0.00,
-				mid_price REAL DEFAULT 0.00,
-				high_price REAL DEFAULT 0.00,
-				direct_low_price REAL,
-				updated_at INTEGER NOT NULL,
+		dbDelta( $sql_cards );
+		dbDelta( $sql_sets );
 
-				image_url TEXT,
-				tcgplayer_url TEXT
-			);
-		' );
-
-		// 2. High-Speed B-Tree Indexes
-		$pdo->exec( 'CREATE INDEX IF NOT EXISTS idx_cards_numeric_lookup ON cards (numeric_number, clean_number);' );
-		$pdo->exec( 'CREATE INDEX IF NOT EXISTS idx_cards_group_number ON cards (group_id, numeric_number);' );
-		$pdo->exec( 'CREATE INDEX IF NOT EXISTS idx_cards_prefix_number ON cards (number_prefix, numeric_number);' );
-		$pdo->exec( 'CREATE INDEX IF NOT EXISTS idx_cards_category_group ON cards (category_id, group_id);' );
-		$pdo->exec( 'CREATE INDEX IF NOT EXISTS idx_cards_tcgplayer_id ON cards (tcgplayer_id);' );
-		$pdo->exec( 'CREATE INDEX IF NOT EXISTS idx_cards_upc ON cards (upc);' );
-
-		// 3. FTS5 Virtual Table
-		$pdo->exec( '
-			CREATE VIRTUAL TABLE IF NOT EXISTS cards_fts USING fts5(
-				name,
-				clean_name,
-				group_name,
-				number_variants,
-				content="cards",
-				content_rowid="tcgplayer_id",
-				tokenize="unicode61 remove_diacritics 2"
-			);
-		' );
-
-		// 4. Auto-Sync Triggers
-		$pdo->exec( '
-			CREATE TRIGGER IF NOT EXISTS cards_ai AFTER INSERT ON cards BEGIN
-				INSERT INTO cards_fts(rowid, name, clean_name, group_name, number_variants)
-				VALUES (new.tcgplayer_id, new.name, new.clean_name, new.group_name, new.number_variants);
-			END;
-		' );
-
-		$pdo->exec( '
-			CREATE TRIGGER IF NOT EXISTS cards_ad AFTER DELETE ON cards BEGIN
-				INSERT INTO cards_fts(cards_fts, rowid, name, clean_name, group_name, number_variants)
-				VALUES ("delete", old.tcgplayer_id, old.name, old.clean_name, old.group_name, old.number_variants);
-			END;
-		' );
-
-		$pdo->exec( '
-			CREATE TRIGGER IF NOT EXISTS cards_au AFTER UPDATE ON cards BEGIN
-				INSERT INTO cards_fts(cards_fts, rowid, name, clean_name, group_name, number_variants)
-				VALUES ("delete", old.tcgplayer_id, old.name, old.clean_name, old.group_name, old.number_variants);
-				INSERT INTO cards_fts(rowid, name, clean_name, group_name, number_variants)
-				VALUES (new.tcgplayer_id, new.name, new.clean_name, new.group_name, new.number_variants);
-			END;
-		' );
+		// Ensure FULLTEXT index exists for text searches (dbDelta does not manage FULLTEXT)
+		$existing_indexes = $wpdb->get_results( "SHOW INDEX FROM {$cards_table} WHERE Key_name = 'ft_card_search'", ARRAY_A );
+		if ( empty( $existing_indexes ) ) {
+			$wpdb->query( "ALTER TABLE {$cards_table} ADD FULLTEXT KEY ft_card_search (name, clean_name, group_name)" );
+		}
 	}
 
 	/**
-	 * Two-Stage Smart Search Query Resolver.
+	 * Two-Stage Smart Search Query Resolver in MySQL.
 	 *
 	 * Executes deterministic B-Tree lookups for slash numbers (e.g. 199/165)
-	 * and FTS5 BM25 searches for text keywords.
+	 * and FULLTEXT boolean searches with LIKE fallback for text keywords.
 	 *
 	 * @param string $query User search string.
 	 * @param array  $filters Optional filters (category_id, group_id, rarity).
@@ -208,231 +168,213 @@ class Card_Vault_Catalog_DB {
 	 * @return array List of matched cards.
 	 */
 	public static function search_cards( string $query, array $filters = array(), int $limit = 25, int $offset = 0 ): array {
-		$pdo = self::get_connection();
-		$limit = max( 1, min( 100, $limit ) );
-		$offset = max( 0, $offset );
+		global $wpdb;
+		$table   = self::get_table_name();
+		$limit   = max( 1, min( 100, $limit ) );
+		$offset  = max( 0, $offset );
 		$trimmed = trim( $query );
 
 		// 1. Check for Smart Number Intent
 		$intent = Card_Vault_Number_Normalizer::extract_number_intent( $trimmed );
 
-		// Fast Path A: Pure fraction query with no keyword (e.g. "199/165" or "004/102")
+		// Fast Path A: Pure fraction query with no keyword (e.g. "199/165")
 		if ( $intent['has_number_intent'] && empty( $intent['clean_keyword'] ) && $intent['target_total'] !== null ) {
-			$sql = 'SELECT * FROM cards WHERE (numeric_number = :num OR clean_number = :clean) AND total_set_number = :total';
-			$params = array(
-				':num'   => $intent['target_number'],
-				':clean' => $intent['target_clean'],
-				':total' => $intent['target_total'],
-			);
+			$where = '(numeric_number = %d OR clean_number = %s) AND total_set_number = %d';
+			$args  = array( $intent['target_number'], $intent['target_clean'], $intent['target_total'] );
 
 			if ( ! empty( $filters['category_id'] ) ) {
-				$sql .= ' AND category_id = :cat';
-				$params[':cat'] = (int) $filters['category_id'];
+				$where .= ' AND category_id = %d';
+				$args[] = (int) $filters['category_id'];
 			}
 
-			$sql .= ' LIMIT ' . $limit . ' OFFSET ' . $offset;
-			$stmt = $pdo->prepare( $sql );
-			$stmt->execute( $params );
-			$results = $stmt->fetchAll();
+			$sql = $wpdb->prepare( "SELECT * FROM {$table} WHERE {$where} LIMIT %d OFFSET %d", array_merge( $args, array( $limit, $offset ) ) );
+			$results = $wpdb->get_results( $sql, ARRAY_A );
 			if ( ! empty( $results ) ) {
 				return $results;
 			}
 		}
 
-		// Fast Path B: Fraction with keyword (e.g. "Charizard 199/165" or "Charizard 4/102")
+		// Fast Path B: Fraction with keyword (e.g. "Charizard 199/165")
 		if ( $intent['has_number_intent'] && ! empty( $intent['clean_keyword'] ) && $intent['target_total'] !== null ) {
-			$clean_kw = Card_Vault_Number_Normalizer::sanitize_fts_query( $intent['clean_keyword'] );
-			$token_pattern = "{$clean_kw}* AND ({$intent['target_clean']} OR {$intent['target_number']}_{$intent['target_total']})";
-
-			$sql = '
-				SELECT c.* FROM cards_fts f
-				JOIN cards c ON c.tcgplayer_id = f.rowid
-				WHERE cards_fts MATCH :match
-			';
-			$params = array( ':match' => $token_pattern );
+			$clean_kw = preg_replace( '/[+\-><()~*\"@]+/', '', $intent['clean_keyword'] );
+			$where    = 'MATCH(name, clean_name, group_name) AGAINST(%s IN BOOLEAN MODE) AND (numeric_number = %d OR clean_number = %s) AND total_set_number = %d';
+			$args     = array( "+{$clean_kw}*", $intent['target_number'], $intent['target_clean'], $intent['target_total'] );
 
 			if ( ! empty( $filters['category_id'] ) ) {
-				$sql .= ' AND c.category_id = :cat';
-				$params[':cat'] = (int) $filters['category_id'];
+				$where .= ' AND category_id = %d';
+				$args[] = (int) $filters['category_id'];
 			}
 
-			$sql .= ' ORDER BY rank LIMIT ' . $limit . ' OFFSET ' . $offset;
-			$stmt = $pdo->prepare( $sql );
-			try {
-				$stmt->execute( $params );
-				$results = $stmt->fetchAll();
-				if ( ! empty( $results ) ) {
-					return $results;
-				}
-			} catch ( Exception $e ) {
-				// Fall through to general search if FTS match pattern failed
+			$sql = $wpdb->prepare( "SELECT * FROM {$table} WHERE {$where} LIMIT %d OFFSET %d", array_merge( $args, array( $limit, $offset ) ) );
+			$results = $wpdb->get_results( $sql, ARRAY_A );
+			if ( ! empty( $results ) ) {
+				return $results;
 			}
 		}
 
-		// Standard Path: Sanitized FTS5 Search
-		$sanitized_fts = Card_Vault_Number_Normalizer::sanitize_fts_query( $trimmed );
-
-		// If query is empty, browse all cards ordered by market_price DESC, name ASC
-		if ( empty( $sanitized_fts ) ) {
-			$sql = 'SELECT * FROM cards WHERE 1=1';
-			$params = array();
+		// Standard Path: Empty query browses all cards
+		if ( empty( $trimmed ) ) {
+			$where = '1=1';
+			$args  = array();
 
 			if ( ! empty( $filters['category_id'] ) ) {
-				$sql .= ' AND category_id = :cat';
-				$params[':cat'] = (int) $filters['category_id'];
+				$where .= ' AND category_id = %d';
+				$args[] = (int) $filters['category_id'];
 			}
-
 			if ( ! empty( $filters['group_id'] ) ) {
-				$sql .= ' AND group_id = :group';
-				$params[':group'] = (int) $filters['group_id'];
+				$where .= ' AND group_id = %d';
+				$args[] = (int) $filters['group_id'];
 			}
-
 			if ( ! empty( $filters['rarity'] ) ) {
-				$sql .= ' AND rarity = :rarity';
-				$params[':rarity'] = sanitize_text_field( $filters['rarity'] );
+				$where .= ' AND rarity = %s';
+				$args[] = sanitize_text_field( $filters['rarity'] );
 			}
 
-			$sql .= ' ORDER BY market_price DESC, name ASC LIMIT ' . $limit . ' OFFSET ' . $offset;
-			$stmt = $pdo->prepare( $sql );
-			$stmt->execute( $params );
-			return $stmt->fetchAll();
+			$sql = empty( $args )
+				? $wpdb->prepare( "SELECT * FROM {$table} WHERE {$where} ORDER BY market_price DESC, name ASC LIMIT %d OFFSET %d", $limit, $offset )
+				: $wpdb->prepare( "SELECT * FROM {$table} WHERE {$where} ORDER BY market_price DESC, name ASC LIMIT %d OFFSET %d", array_merge( $args, array( $limit, $offset ) ) );
+			return $wpdb->get_results( $sql, ARRAY_A ) ?: array();
 		}
 
-		// Build prefix match query (e.g. "charizard* AND 4*")
-		$terms = explode( ' ', $sanitized_fts );
-		$fts_query_parts = array();
+		// Standard Path: FULLTEXT Boolean search
+		$terms = array_filter( explode( ' ', $trimmed ), fn( $t ) => strlen( trim( $t ) ) > 0 );
+		$ft_query = '';
 		foreach ( $terms as $term ) {
-			if ( strlen( $term ) > 0 ) {
-				$fts_query_parts[] = "{$term}*";
+			$cleaned_term = preg_replace( '/[+\-><()~*\"@]+/', '', $term );
+			if ( strlen( $cleaned_term ) > 0 ) {
+				$ft_query .= '+' . $cleaned_term . '* ';
 			}
 		}
-		$fts_query = implode( ' AND ', $fts_query_parts );
+		$ft_query = trim( $ft_query );
 
-		$sql = '
-			SELECT c.* FROM cards_fts f
-			JOIN cards c ON c.tcgplayer_id = f.rowid
-			WHERE cards_fts MATCH :match
-		';
-		$params = array( ':match' => $fts_query );
+		$where = 'MATCH(name, clean_name, group_name) AGAINST(%s IN BOOLEAN MODE)';
+		$args  = array( $ft_query );
 
 		if ( ! empty( $filters['category_id'] ) ) {
-			$sql .= ' AND c.category_id = :cat';
-			$params[':cat'] = (int) $filters['category_id'];
+			$where .= ' AND category_id = %d';
+			$args[] = (int) $filters['category_id'];
 		}
-
 		if ( ! empty( $filters['group_id'] ) ) {
-			$sql .= ' AND c.group_id = :group';
-			$params[':group'] = (int) $filters['group_id'];
+			$where .= ' AND group_id = %d';
+			$args[] = (int) $filters['group_id'];
 		}
-
 		if ( ! empty( $filters['rarity'] ) ) {
-			$sql .= ' AND c.rarity = :rarity';
-			$params[':rarity'] = sanitize_text_field( $filters['rarity'] );
+			$where .= ' AND rarity = %s';
+			$args[] = sanitize_text_field( $filters['rarity'] );
 		}
 
-		$sql .= ' ORDER BY rank LIMIT ' . $limit . ' OFFSET ' . $offset;
+		$sql = $wpdb->prepare( "SELECT * FROM {$table} WHERE {$where} ORDER BY market_price DESC, name ASC LIMIT %d OFFSET %d", array_merge( $args, array( $limit, $offset ) ) );
+		$results = $wpdb->get_results( $sql, ARRAY_A );
 
-		try {
-			$stmt = $pdo->prepare( $sql );
-			$stmt->execute( $params );
-			return $stmt->fetchAll();
-		} catch ( Exception $e ) {
-			// Fallback: LIKE query on title
-			$like_sql = 'SELECT * FROM cards WHERE clean_name LIKE :like ORDER BY market_price DESC LIMIT ' . $limit . ' OFFSET ' . $offset;
-			$like_stmt = $pdo->prepare( $like_sql );
-			$like_stmt->execute( array( ':like' => '%' . strtolower( $trimmed ) . '%' ) );
-			return $like_stmt->fetchAll();
+		// Fallback to LIKE if FULLTEXT yields no results
+		if ( empty( $results ) ) {
+			$like_val   = '%' . $wpdb->esc_like( strtolower( $trimmed ) ) . '%';
+			$like_where = '(clean_name LIKE %s OR group_name LIKE %s)';
+			$like_args  = array( $like_val, $like_val );
+			if ( ! empty( $filters['category_id'] ) ) {
+				$like_where .= ' AND category_id = %d';
+				$like_args[] = (int) $filters['category_id'];
+			}
+			if ( ! empty( $filters['group_id'] ) ) {
+				$like_where .= ' AND group_id = %d';
+				$like_args[] = (int) $filters['group_id'];
+			}
+			$like_sql = $wpdb->prepare( "SELECT * FROM {$table} WHERE {$like_where} ORDER BY market_price DESC LIMIT %d OFFSET %d", array_merge( $like_args, array( $limit, $offset ) ) );
+			$results  = $wpdb->get_results( $like_sql, ARRAY_A );
 		}
+
+		return $results ?: array();
 	}
 
 	/**
 	 * Count total cards matching query and filters.
 	 *
 	 * @param string $query User search string.
-	 * @param array  $filters Optional filters (category_id, group_id, rarity).
-	 * @return int Total card count.
+	 * @param array  $filters Optional filters.
+	 * @return int Total count.
 	 */
 	public static function count_cards( string $query = '', array $filters = array() ): int {
-		$pdo = self::get_connection();
+		global $wpdb;
+		$table   = self::get_table_name();
 		$trimmed = trim( $query );
-		$sanitized_fts = Card_Vault_Number_Normalizer::sanitize_fts_query( $trimmed );
 
-		if ( empty( $sanitized_fts ) ) {
-			$sql = 'SELECT COUNT(*) FROM cards WHERE 1=1';
-			$params = array();
-
+		if ( empty( $trimmed ) ) {
+			$where = '1=1';
+			$args  = array();
 			if ( ! empty( $filters['category_id'] ) ) {
-				$sql .= ' AND category_id = :cat';
-				$params[':cat'] = (int) $filters['category_id'];
+				$where .= ' AND category_id = %d';
+				$args[] = (int) $filters['category_id'];
 			}
-
 			if ( ! empty( $filters['group_id'] ) ) {
-				$sql .= ' AND group_id = :group';
-				$params[':group'] = (int) $filters['group_id'];
+				$where .= ' AND group_id = %d';
+				$args[] = (int) $filters['group_id'];
 			}
-
 			if ( ! empty( $filters['rarity'] ) ) {
-				$sql .= ' AND rarity = :rarity';
-				$params[':rarity'] = sanitize_text_field( $filters['rarity'] );
+				$where .= ' AND rarity = %s';
+				$args[] = sanitize_text_field( $filters['rarity'] );
 			}
-
-			$stmt = $pdo->prepare( $sql );
-			$stmt->execute( $params );
-			return (int) $stmt->fetchColumn();
+			$sql = empty( $args ) ? "SELECT COUNT(*) FROM {$table}" : $wpdb->prepare( "SELECT COUNT(*) FROM {$table} WHERE {$where}", $args );
+			return (int) $wpdb->get_var( $sql );
 		}
 
-		// FTS count
-		$terms = explode( ' ', $sanitized_fts );
-		$fts_query_parts = array();
+		$terms = array_filter( explode( ' ', $trimmed ), fn( $t ) => strlen( trim( $t ) ) > 0 );
+		$ft_query = '';
 		foreach ( $terms as $term ) {
-			if ( strlen( $term ) > 0 ) {
-				$fts_query_parts[] = "{$term}*";
+			$cleaned_term = preg_replace( '/[+\-><()~*\"@]+/', '', $term );
+			if ( strlen( $cleaned_term ) > 0 ) {
+				$ft_query .= '+' . $cleaned_term . '* ';
 			}
 		}
-		$fts_query = implode( ' AND ', $fts_query_parts );
+		$ft_query = trim( $ft_query );
 
-		$sql = '
-			SELECT COUNT(*) FROM cards_fts f
-			JOIN cards c ON c.tcgplayer_id = f.rowid
-			WHERE cards_fts MATCH :match
-		';
-		$params = array( ':match' => $fts_query );
-
+		$where = 'MATCH(name, clean_name, group_name) AGAINST(%s IN BOOLEAN MODE)';
+		$args  = array( $ft_query );
 		if ( ! empty( $filters['category_id'] ) ) {
-			$sql .= ' AND c.category_id = :cat';
-			$params[':cat'] = (int) $filters['category_id'];
+			$where .= ' AND category_id = %d';
+			$args[] = (int) $filters['category_id'];
 		}
-
 		if ( ! empty( $filters['group_id'] ) ) {
-			$sql .= ' AND c.group_id = :group';
-			$params[':group'] = (int) $filters['group_id'];
+			$where .= ' AND group_id = %d';
+			$args[] = (int) $filters['group_id'];
 		}
-
 		if ( ! empty( $filters['rarity'] ) ) {
-			$sql .= ' AND c.rarity = :rarity';
-			$params[':rarity'] = sanitize_text_field( $filters['rarity'] );
+			$where .= ' AND rarity = %s';
+			$args[] = sanitize_text_field( $filters['rarity'] );
 		}
 
-		try {
-			$stmt = $pdo->prepare( $sql );
-			$stmt->execute( $params );
-			return (int) $stmt->fetchColumn();
-		} catch ( Exception $e ) {
-			$like_sql = 'SELECT COUNT(*) FROM cards WHERE clean_name LIKE :like';
-			$like_stmt = $pdo->prepare( $like_sql );
-			$like_stmt->execute( array( ':like' => '%' . strtolower( $trimmed ) . '%' ) );
-			return (int) $like_stmt->fetchColumn();
+		$count = (int) $wpdb->get_var( $wpdb->prepare( "SELECT COUNT(*) FROM {$table} WHERE {$where}", $args ) );
+		if ( $count === 0 ) {
+			$like_val   = '%' . $wpdb->esc_like( strtolower( $trimmed ) ) . '%';
+			$like_where = '(clean_name LIKE %s OR group_name LIKE %s)';
+			$like_args  = array( $like_val, $like_val );
+			if ( ! empty( $filters['category_id'] ) ) {
+				$like_where .= ' AND category_id = %d';
+				$like_args[] = (int) $filters['category_id'];
+			}
+			if ( ! empty( $filters['group_id'] ) ) {
+				$like_where .= ' AND group_id = %d';
+				$like_args[] = (int) $filters['group_id'];
+			}
+			$count = (int) $wpdb->get_var( $wpdb->prepare( "SELECT COUNT(*) FROM {$table} WHERE {$like_where}", $like_args ) );
 		}
+		return $count;
 	}
 
 	/**
-	 * Retrieve distinct synced groups/sets with card counts and timestamps.
+	 * Retrieve distinct synced groups with card counts and timestamps.
 	 *
 	 * @return array List of synced set records.
 	 */
 	public static function get_synced_groups(): array {
-		$pdo = self::get_connection();
-		$sql = '
+		global $wpdb;
+		$table = self::get_table_name();
+
+		// Self-heal table if not yet created
+		if ( $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $table ) ) !== $table ) {
+			self::ensure_database();
+		}
+
+		$sql = "
 			SELECT
 				group_id,
 				group_name,
@@ -440,29 +382,24 @@ class Card_Vault_Catalog_DB {
 				category_name,
 				COUNT(*) as card_count,
 				MAX(updated_at) as last_synced
-			FROM cards
-			GROUP BY group_id
+			FROM {$table}
+			GROUP BY group_id, group_name, category_id, category_name
 			ORDER BY last_synced DESC, group_name ASC
-		';
-		try {
-			$stmt = $pdo->query( $sql );
-			return $stmt->fetchAll() ?: array();
-		} catch ( Exception $e ) {
-			return array();
-		}
+		";
+		$rows = $wpdb->get_results( $sql, ARRAY_A );
+		return $rows ?: array();
 	}
 
 	/**
-	 * Retrieve a single card by its canonical ID (e.g. "tcg-451620").
+	 * Retrieve a single card by its canonical ID.
 	 *
 	 * @param string $id Card identifier.
 	 * @return array|null Card record or null.
 	 */
 	public static function get_card_by_id( string $id ): ?array {
-		$pdo = self::get_connection();
-		$stmt = $pdo->prepare( 'SELECT * FROM cards WHERE id = :id LIMIT 1' );
-		$stmt->execute( array( ':id' => $id ) );
-		$card = $stmt->fetch();
+		global $wpdb;
+		$table = self::get_table_name();
+		$card  = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM {$table} WHERE id = %s LIMIT 1", $id ), ARRAY_A );
 		return $card ?: null;
 	}
 
@@ -473,43 +410,36 @@ class Card_Vault_Catalog_DB {
 	 * @return array|null Card record or null.
 	 */
 	public static function get_card_by_tcgplayer_id( int $tcgplayer_id ): ?array {
-		$pdo = self::get_connection();
-		$stmt = $pdo->prepare( 'SELECT * FROM cards WHERE tcgplayer_id = :pid LIMIT 1' );
-		$stmt->execute( array( ':pid' => $tcgplayer_id ) );
-		$card = $stmt->fetch();
+		global $wpdb;
+		$table = self::get_table_name();
+		$card  = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM {$table} WHERE tcgplayer_id = %d LIMIT 1", $tcgplayer_id ), ARRAY_A );
 		return $card ?: null;
 	}
 
 	/**
-	 * Retrieve a product by its barcode (UPC for sealed items or product ID).
+	 * Retrieve a product by barcode (UPC or TCGPlayer ID).
 	 *
 	 * @param string $barcode Scanned barcode string.
 	 * @return array|null Card record or null.
 	 */
 	public static function get_card_by_barcode( string $barcode ): ?array {
-		$pdo = self::get_connection();
+		global $wpdb;
+		$table   = self::get_table_name();
 		$trimmed = trim( $barcode );
 
-		// 1. Try exact UPC match (Sealed booster box / pack)
-		$stmt = $pdo->prepare( 'SELECT * FROM cards WHERE upc = :upc LIMIT 1' );
-		$stmt->execute( array( ':upc' => $trimmed ) );
-		$card = $stmt->fetch();
+		$card = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM {$table} WHERE upc = %s LIMIT 1", $trimmed ), ARRAY_A );
 		if ( $card ) {
 			return $card;
 		}
 
-		// 2. Try clean leading zeros on UPC
 		$clean_upc = ltrim( $trimmed, '0' );
 		if ( $clean_upc !== $trimmed ) {
-			$stmt = $pdo->prepare( 'SELECT * FROM cards WHERE upc = :upc OR upc = :clean LIMIT 1' );
-			$stmt->execute( array( ':upc' => $trimmed, ':clean' => $clean_upc ) );
-			$card = $stmt->fetch();
+			$card = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM {$table} WHERE upc = %s OR upc = %s LIMIT 1", $trimmed, $clean_upc ), ARRAY_A );
 			if ( $card ) {
 				return $card;
 			}
 		}
 
-		// 3. Try TCGPlayer ID numeric lookup
 		if ( is_numeric( $trimmed ) ) {
 			return self::get_card_by_tcgplayer_id( (int) $trimmed );
 		}
@@ -518,46 +448,137 @@ class Card_Vault_Catalog_DB {
 	}
 
 	/**
-	 * Get database diagnostics and metrics.
+	 * Batch upsert an array of card records via MySQL ON DUPLICATE KEY UPDATE.
+	 *
+	 * @param array<array> $cards List of prepared card row arrays.
+	 * @return int Total number of records processed.
+	 */
+	public static function batch_upsert_cards( array $cards ): int {
+		global $wpdb;
+		if ( empty( $cards ) ) {
+			return 0;
+		}
+
+		$table   = self::get_table_name();
+		$columns = array(
+			'id', 'tcgplayer_id', 'category_id', 'category_name', 'group_id', 'group_name',
+			'name', 'clean_name', 'sub_type_name',
+			'raw_number', 'clean_number', 'numeric_number', 'number_prefix', 'total_set_number', 'number_variants',
+			'rarity', 'card_type', 'stage_or_subtype', 'hp', 'card_text', 'upc',
+			'market_price', 'low_price', 'mid_price', 'high_price', 'direct_low_price',
+			'updated_at', 'image_url', 'tcgplayer_url',
+		);
+
+		$col_list       = implode( ', ', $columns );
+		$update_clauses = array();
+		foreach ( array( 'category_name', 'group_name', 'name', 'clean_name', 'sub_type_name', 'raw_number', 'clean_number', 'numeric_number', 'number_prefix', 'total_set_number', 'number_variants', 'rarity', 'card_type', 'stage_or_subtype', 'hp', 'card_text', 'upc', 'market_price', 'low_price', 'mid_price', 'high_price', 'direct_low_price', 'updated_at', 'image_url', 'tcgplayer_url' ) as $up_col ) {
+			$update_clauses[] = "{$up_col} = VALUES({$up_col})";
+		}
+		$update_str     = implode( ', ', $update_clauses );
+		$chunks         = array_chunk( $cards, 200 );
+		$total_inserted = 0;
+
+		foreach ( $chunks as $chunk ) {
+			$placeholders = array();
+			$values       = array();
+
+			foreach ( $chunk as $card ) {
+				$placeholders[] = '(' . implode( ', ', array_fill( 0, count( $columns ), '%s' ) ) . ')';
+				foreach ( $columns as $col ) {
+					$values[] = $card[ $col ] ?? null;
+				}
+			}
+
+			$query = "INSERT INTO {$table} ({$col_list}) VALUES " . implode( ', ', $placeholders ) . " ON DUPLICATE KEY UPDATE {$update_str}";
+			$wpdb->query( $wpdb->prepare( $query, $values ) );
+			$total_inserted += count( $chunk );
+		}
+
+		return $total_inserted;
+	}
+
+	/**
+	 * Get subsite database diagnostics and metrics.
 	 *
 	 * @return array Database status details.
 	 */
 	public static function get_status(): array {
-		$path = self::get_db_path();
-		$exists = file_exists( $path );
-		$size_bytes = $exists ? filesize( $path ) : 0;
-		$wal_path = $path . '-wal';
-		$wal_bytes = file_exists( $wal_path ) ? filesize( $wal_path ) : 0;
+		global $wpdb;
+		$table      = self::get_table_name();
+		$table_name = str_replace( '`', '', $table );
+		$db_name    = DB_NAME;
 
-		$total_cards = 0;
-		$last_updated = null;
-
-		if ( $exists ) {
-			try {
-				$pdo = self::get_connection();
-				$total_cards = (int) $pdo->query( 'SELECT COUNT(*) FROM cards' )->fetchColumn();
-				$max_epoch = (int) $pdo->query( 'SELECT MAX(updated_at) FROM cards' )->fetchColumn();
-				if ( $max_epoch > 0 ) {
-					$last_updated = date( 'Y-m-d H:i:s', $max_epoch );
-				}
-			} catch ( Exception $e ) {
-				// Ignore query errors during uninitialized state
-			}
+		// Ensure table exists on status check
+		if ( $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $table ) ) !== $table ) {
+			self::ensure_database();
 		}
 
-		$synced_groups = $exists ? self::get_synced_groups() : array();
+		$info = $wpdb->get_row( $wpdb->prepare(
+			'SELECT TABLE_ROWS, (DATA_LENGTH + INDEX_LENGTH) as bytes
+			 FROM information_schema.TABLES
+			 WHERE TABLE_SCHEMA = %s AND TABLE_NAME = %s',
+			$db_name,
+			$table_name
+		), ARRAY_A );
+
+		$exists       = ! empty( $info );
+		$size_bytes   = (int) ( $info['bytes'] ?? 0 );
+		$total_cards  = (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$table}" );
+		$max_epoch    = (int) $wpdb->get_var( "SELECT MAX(updated_at) FROM {$table}" );
+		$last_updated = $max_epoch > 0 ? date( 'Y-m-d H:i:s', $max_epoch ) : null;
+
+		$synced_groups = self::get_synced_groups();
 
 		return array(
-			'exists'         => $exists,
-			'path'           => $path,
-			'size_bytes'     => $size_bytes,
-			'size_mb'        => round( $size_bytes / ( 1024 * 1024 ), 2 ),
-			'wal_bytes'      => $wal_bytes,
-			'total_cards'    => $total_cards,
-			'last_updated'   => $last_updated,
-			'driver'         => 'SQLite PDO',
-			'synced_groups'  => $synced_groups,
-			'total_groups'   => count( $synced_groups ),
+			'exists'        => $exists,
+			'table'         => $table,
+			'size_bytes'    => $size_bytes,
+			'size_mb'       => round( $size_bytes / ( 1024 * 1024 ), 2 ),
+			'total_cards'   => $total_cards,
+			'last_updated'  => $last_updated,
+			'driver'        => 'WordPress MySQL (InnoDB)',
+			'synced_groups' => $synced_groups,
+			'total_groups'  => count( $synced_groups ),
 		);
+	}
+
+	/**
+	 * Get subsite selected categories for catalog synchronization.
+	 * Defaults to Pokémon (category 3) if not yet configured.
+	 *
+	 * @return array<int> List of category IDs.
+	 */
+	public static function get_selected_categories(): array {
+		$saved = get_option( self::OPTION_SELECTED_CATEGORIES, array( 3 ) );
+		return is_array( $saved ) && ! empty( $saved ) ? array_map( 'intval', $saved ) : array( 3 );
+	}
+
+	/**
+	 * Update subsite selected categories.
+	 *
+	 * @param array<int> $category_ids List of category IDs.
+	 */
+	public static function set_selected_categories( array $category_ids ): void {
+		$clean = array_unique( array_filter( array_map( 'intval', $category_ids ) ) );
+		update_option( self::OPTION_SELECTED_CATEGORIES, $clean );
+	}
+
+	/**
+	 * Get sets scope setting (e.g. 10, 25, 50, or 'all').
+	 *
+	 * @return string Sets scope value.
+	 */
+	public static function get_sets_scope(): string {
+		return (string) get_option( self::OPTION_SETS_SCOPE, '25' );
+	}
+
+	/**
+	 * Update sets scope setting.
+	 *
+	 * @param string $scope Scope value.
+	 */
+	public static function set_sets_scope( string $scope ): void {
+		$clean = sanitize_text_field( $scope );
+		update_option( self::OPTION_SETS_SCOPE, $clean );
 	}
 }
