@@ -1,1 +1,0 @@
-import{Cr as e,V as t,dn as n}from"./createLucideIcon-s7tGBmv7.js";var r=[null,`default`,`comfortable`,`compact`],i=n({density:{type:String,default:`default`,validator:e=>r.includes(e)}},`density`);function a(n){let r=arguments.length>1&&arguments[1]!==void 0?arguments[1]:t();return{densityClasses:e(()=>`${r}--density-${n.density}`)}}export{a as n,i as t};

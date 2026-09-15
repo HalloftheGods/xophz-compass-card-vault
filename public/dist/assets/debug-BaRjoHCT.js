@@ -1,1 +1,0 @@
-var e=typeof process<`u`&&!0,t={log:(...t)=>{!e&&typeof console<`u`&&console.log(...t)},warn:(...t)=>{!e&&typeof console<`u`&&console.warn(...t)},error:(...e)=>{typeof console<`u`&&console.error(...e)}};export{t};

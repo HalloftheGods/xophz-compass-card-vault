@@ -1,1 +1,0 @@
-import{A as e,Gr as t,I as n,N as r,dn as i,kn as a,qr as o,un as s}from"./createLucideIcon-s7tGBmv7.js";var c=i({opacity:[Number,String],...s(),...e()},`VCardText`),l=n()({name:`VCardText`,props:c(),setup(e,n){let{slots:i}=n;return r(()=>a(e.tag,{class:t([`v-card-text`,e.class]),style:o([{"--v-card-text-opacity":e.opacity},e.style])},i)),{}}});export{l as t};
