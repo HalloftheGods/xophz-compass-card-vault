@@ -79,7 +79,18 @@ class Card_Vault_Catalog_REST {
 				array(
 					'methods'             => WP_REST_Server::READABLE,
 					'callback'            => array( __CLASS__, 'handle_cache_stats' ),
-					'permission_callback' => array( __CLASS__, 'check_admin_permission' ),
+					'permission_callback' => array( __CLASS__, 'check_read_permission' ),
+				)
+			);
+
+			// 2d. Batch Price Resync for Vault Collection
+			register_rest_route(
+				$ns,
+				'/catalog/cards/prices',
+				array(
+					'methods'             => WP_REST_Server::CREATABLE,
+					'callback'            => array( __CLASS__, 'handle_resync_prices' ),
+					'permission_callback' => array( __CLASS__, 'check_read_permission' ),
 				)
 			);
 
@@ -90,6 +101,42 @@ class Card_Vault_Catalog_REST {
 				array(
 					'methods'             => WP_REST_Server::CREATABLE,
 					'callback'            => array( __CLASS__, 'handle_cache_purge' ),
+					'permission_callback' => array( __CLASS__, 'check_admin_permission' ),
+				)
+			);
+
+			// 2e. Card Price History
+			register_rest_route(
+				$ns,
+				'/catalog/cards/(?P<id>[a-zA-Z0-9-_]+)/history',
+				array(
+					'methods'             => WP_REST_Server::READABLE,
+					'callback'            => array( __CLASS__, 'handle_get_card_history' ),
+					'permission_callback' => array( __CLASS__, 'check_read_permission' ),
+					'args'                => array(
+						'days' => array( 'default' => 30, 'sanitize_callback' => 'absint' ),
+					),
+				)
+			);
+
+			// 2f. Portfolio Valuation History
+			register_rest_route(
+				$ns,
+				'/catalog/portfolio/history',
+				array(
+					'methods'             => WP_REST_Server::CREATABLE,
+					'callback'            => array( __CLASS__, 'handle_portfolio_history' ),
+					'permission_callback' => array( __CLASS__, 'check_read_permission' ),
+				)
+			);
+
+			// 2g. Upload PriceCharting CSV
+			register_rest_route(
+				$ns,
+				'/catalog/upload-pricecharting',
+				array(
+					'methods'             => WP_REST_Server::CREATABLE,
+					'callback'            => array( __CLASS__, 'handle_upload_pricecharting' ),
 					'permission_callback' => array( __CLASS__, 'check_admin_permission' ),
 				)
 			);
@@ -370,6 +417,107 @@ class Card_Vault_Catalog_REST {
 			'success' => true,
 			'card'    => $card,
 		) );
+	}
+
+	/**
+	 * Handle batch price resync for multiple cards in player's vault.
+	 *
+	 * @param WP_REST_Request $request
+	 * @return WP_REST_Response
+	 */
+	public static function handle_resync_prices( WP_REST_Request $request ) {
+		$cards = $request->get_param( 'cards' );
+		if ( ! is_array( $cards ) ) {
+			$json = $request->get_json_params();
+			if ( isset( $json['cards'] ) && is_array( $json['cards'] ) ) {
+				$cards = $json['cards'];
+			} elseif ( is_array( $json ) ) {
+				$cards = $json;
+			}
+		}
+		if ( ! is_array( $cards ) ) {
+			$cards = array();
+		}
+
+		$start = microtime( true );
+		$prices = Card_Vault_Catalog_DB::get_cards_pricing_batch( $cards );
+		$elapsed = round( ( microtime( true ) - $start ) * 1000, 2 );
+
+		return rest_ensure_response( array(
+			'success'      => true,
+			'count'        => count( $prices ),
+			'execution_ms' => $elapsed,
+			'prices'       => $prices,
+		) );
+	}
+
+	/**
+	 * Handle retrieving price history for a single card.
+	 *
+	 * @param WP_REST_Request $request
+	 * @return WP_REST_Response
+	 */
+	public static function handle_get_card_history( WP_REST_Request $request ) {
+		$id   = sanitize_text_field( (string) $request->get_param( 'id' ) );
+		$days = max( 1, min( 365, (int) $request->get_param( 'days' ) ?: 30 ) );
+
+		$history = Card_Vault_Catalog_DB::get_card_price_history( $id, $days );
+
+		return rest_ensure_response( array(
+			'success' => true,
+			'card_id' => $id,
+			'days'    => $days,
+			'count'   => count( $history ),
+			'history' => $history,
+		) );
+	}
+
+	/**
+	 * Handle computing portfolio valuation history across multiple items.
+	 *
+	 * @param WP_REST_Request $request
+	 * @return WP_REST_Response
+	 */
+	public static function handle_portfolio_history( WP_REST_Request $request ) {
+		$body  = $request->get_json_params();
+		$items = is_array( $body['items'] ?? null ) ? $body['items'] : array();
+		$days  = max( 1, min( 365, (int) ( $body['days'] ?? 30 ) ) );
+
+		if ( empty( $items ) ) {
+			return rest_ensure_response( array(
+				'success' => true,
+				'days'    => $days,
+				'count'   => 0,
+				'points'  => array(),
+			) );
+		}
+
+		$points = Card_Vault_Catalog_DB::get_portfolio_history( $items, $days );
+
+		return rest_ensure_response( array(
+			'success' => true,
+			'days'    => $days,
+			'count'   => count( $points ),
+			'points'  => $points,
+		) );
+	}
+
+	/**
+	 * Handle manual PriceCharting CSV upload from admin.
+	 *
+	 * @param WP_REST_Request $request
+	 * @return WP_REST_Response|WP_Error
+	 */
+	public static function handle_upload_pricecharting( WP_REST_Request $request ) {
+		$files = $request->get_file_params();
+		if ( empty( $files['file']['tmp_name'] ) ) {
+			return new WP_Error( 'missing_file', __( 'No CSV file uploaded.', 'xophz-compass-card-vault' ), array( 'status' => 400 ) );
+		}
+
+		$tmp_file = $files['file']['tmp_name'];
+		$result   = Card_Vault_Catalog_Importer::ingest_pricecharting_csv( $tmp_file );
+
+		return rest_ensure_response( $result );
 	}
 
 	/**
