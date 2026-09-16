@@ -443,7 +443,7 @@ class Card_Vault_Catalog_Importer {
 			}
 
 			if ( ! empty( $history_snapshots ) ) {
-				Card_Vault_Price_History::record_batch_snapshots( $pdo, $history_snapshots );
+				Card_Vault_Price_History::record_batch_snapshots( $history_snapshots );
 			}
 
 			fclose( $handle );
@@ -521,28 +521,12 @@ class Card_Vault_Catalog_Importer {
 		}
 
 		Card_Vault_Catalog_DB::ensure_database();
-		$pdo = Card_Vault_Catalog_DB::get_connection();
-		$start_time = microtime( true );
-		$now = time();
-		$matched_count = 0;
+		global $wpdb;
+		$cards_table = Card_Vault_Catalog_DB::get_table_name();
+		$start_time  = microtime( true );
+		$now         = time();
+		$matched_count     = 0;
 		$history_snapshots = array();
-
-		$update_stmt = $pdo->prepare( '
-			UPDATE cards SET
-				psa9_price = CASE WHEN :psa9 > 0 THEN :psa9 ELSE psa9_price END,
-				psa10_price = CASE WHEN :psa10 > 0 THEN :psa10 ELSE psa10_price END,
-				pricing_source = "pricecharting",
-				updated_at = :now
-			WHERE id = :id
-		' );
-
-		$lookup_num_stmt = $pdo->prepare( '
-			SELECT id, clean_name, group_name FROM cards
-			WHERE clean_number = :clean_num AND (group_name LIKE :set_wild OR :set_exact = "")
-			LIMIT 5
-		' );
-
-		$pdo->beginTransaction();
 
 		try {
 			while ( ( $row = fgetcsv( $handle ) ) !== false ) {
@@ -555,16 +539,16 @@ class Card_Vault_Catalog_Importer {
 				$clean_set   = preg_replace( '/^pokemon\s+/i', '', $raw_console );
 
 				$card_number = '';
-				$variant = '';
-				$card_name = $raw_product;
+				$variant     = '';
+				$card_name   = $raw_product;
 
 				if ( preg_match( '/#([A-Za-z0-9\/-]+)/', $raw_product, $m ) ) {
 					$card_number = $m[1];
-					$card_name = trim( str_replace( $m[0], '', $card_name ) );
+					$card_name   = trim( str_replace( $m[0], '', $card_name ) );
 				}
 
 				if ( preg_match( '/\[(.*?)\]/', $raw_product, $m ) ) {
-					$variant = $m[1];
+					$variant   = $m[1];
 					$card_name = trim( str_replace( $m[0], '', $card_name ) );
 				}
 
@@ -585,12 +569,14 @@ class Card_Vault_Catalog_Importer {
 
 				$matched_id = null;
 				if ( ! empty( $clean_num ) ) {
-					$lookup_num_stmt->execute( array(
-						':clean_num' => $clean_num,
-						':set_wild'  => "%{$clean_set}%",
-						':set_exact' => $clean_set,
-					) );
-					$candidates = $lookup_num_stmt->fetchAll( PDO::FETCH_ASSOC );
+					$candidates = $wpdb->get_results( $wpdb->prepare(
+						"SELECT id, clean_name, group_name FROM {$cards_table}
+						 WHERE clean_number = %s AND (group_name LIKE %s OR %s = '')
+						 LIMIT 5",
+						$clean_num,
+						'%' . $wpdb->esc_like( $clean_set ) . '%',
+						$clean_set
+					), ARRAY_A );
 
 					if ( count( $candidates ) === 1 ) {
 						$matched_id = $candidates[0]['id'];
@@ -606,11 +592,19 @@ class Card_Vault_Catalog_Importer {
 				}
 
 				if ( $matched_id ) {
-					$update_stmt->execute( array(
-						':id'    => $matched_id,
-						':psa9'  => $psa9,
-						':psa10' => $psa10,
-						':now'   => $now,
+					$wpdb->query( $wpdb->prepare(
+						"UPDATE {$cards_table} SET
+							psa9_price = CASE WHEN %f > 0 THEN %f ELSE psa9_price END,
+							psa10_price = CASE WHEN %f > 0 THEN %f ELSE psa10_price END,
+							pricing_source = 'pricecharting',
+							updated_at = %d
+						 WHERE id = %s",
+						$psa9,
+						$psa9,
+						$psa10,
+						$psa10,
+						$now,
+						$matched_id
 					) );
 
 					$history_snapshots[] = array(
@@ -626,10 +620,9 @@ class Card_Vault_Catalog_Importer {
 			}
 
 			if ( ! empty( $history_snapshots ) ) {
-				Card_Vault_Price_History::record_batch_snapshots( $pdo, $history_snapshots );
+				Card_Vault_Price_History::record_batch_snapshots( $history_snapshots );
 			}
 
-			$pdo->commit();
 			fclose( $handle );
 
 			return array(
@@ -638,7 +631,6 @@ class Card_Vault_Catalog_Importer {
 				'elapsed_sec'   => round( microtime( true ) - $start_time, 2 ),
 			);
 		} catch ( Exception $e ) {
-			$pdo->rollBack();
 			fclose( $handle );
 			return array(
 				'success'       => false,
