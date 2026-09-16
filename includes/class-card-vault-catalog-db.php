@@ -529,6 +529,101 @@ class Card_Vault_Catalog_DB {
 	}
 
 	/**
+	 * Retrieve fresh pricing metrics for multiple cards in batch.
+	 *
+	 * Queries SQLite cards.db using indexed primary keys and TCGPlayer IDs.
+	 *
+	 * @param array $card_identifiers List of card objects or string IDs.
+	 * @return array Map of card_id => pricing attributes.
+	 */
+	public static function get_cards_pricing_batch( array $card_identifiers ): array {
+		$pdo = self::get_connection();
+		$results = array();
+		if ( empty( $card_identifiers ) ) {
+			return $results;
+		}
+
+		$ids = array();
+		$tcgplayer_ids = array();
+
+		foreach ( $card_identifiers as $item ) {
+			if ( is_string( $item ) ) {
+				$ids[] = sanitize_text_field( trim( $item ) );
+			} elseif ( is_array( $item ) ) {
+				if ( ! empty( $item['id'] ) ) {
+					$ids[] = sanitize_text_field( trim( (string) $item['id'] ) );
+				}
+				if ( ! empty( $item['tcgplayerId'] ) || ! empty( $item['tcgplayer_id'] ) ) {
+					$pid = (int) ( $item['tcgplayerId'] ?? $item['tcgplayer_id'] );
+					if ( $pid > 0 ) {
+						$tcgplayer_ids[] = $pid;
+					}
+				}
+			}
+		}
+
+		// 1. Query by direct IDs
+		if ( ! empty( $ids ) ) {
+			$ids = array_values( array_unique( $ids ) );
+			$chunks = array_chunk( $ids, 100 );
+			foreach ( $chunks as $chunk ) {
+				$placeholders = implode( ',', array_fill( 0, count( $chunk ), '?' ) );
+				$stmt = $pdo->prepare( "SELECT id, tcgplayer_id, name, market_price, low_price, mid_price, high_price, psa10_price, psa9_price, updated_at FROM cards WHERE id IN ($placeholders)" );
+				$stmt->execute( $chunk );
+				$rows = $stmt->fetchAll();
+				foreach ( $rows as $row ) {
+					$results[ $row['id'] ] = array(
+						'id'             => $row['id'],
+						'tcgplayerId'    => (int) $row['tcgplayer_id'],
+						'rawMarketPrice' => (float) $row['market_price'],
+						'rawLowPrice'    => (float) $row['low_price'],
+						'rawMidPrice'    => (float) $row['mid_price'],
+						'rawHighPrice'   => (float) $row['high_price'],
+						'psa10Price'     => (float) $row['psa10_price'],
+						'psa9Price'      => (float) $row['psa9_price'],
+						'psa8Price'      => round( (float) $row['market_price'] * 0.90, 2 ),
+						'psa7Price'      => round( (float) $row['market_price'] * 0.72, 2 ),
+						'lastUpdated'    => ! empty( $row['updated_at'] ) ? date( 'Y-m-d', (int) $row['updated_at'] ) : gmdate( 'Y-m-d' ),
+					);
+				}
+			}
+		}
+
+		// 2. Query by tcgplayer_ids for missing items
+		if ( ! empty( $tcgplayer_ids ) ) {
+			$tcgplayer_ids = array_values( array_unique( $tcgplayer_ids ) );
+			$chunks = array_chunk( $tcgplayer_ids, 100 );
+			foreach ( $chunks as $chunk ) {
+				$placeholders = implode( ',', array_fill( 0, count( $chunk ), '?' ) );
+				$stmt = $pdo->prepare( "SELECT id, tcgplayer_id, name, market_price, low_price, mid_price, high_price, psa10_price, psa9_price, updated_at FROM cards WHERE tcgplayer_id IN ($placeholders)" );
+				$stmt->execute( $chunk );
+				$rows = $stmt->fetchAll();
+				foreach ( $rows as $row ) {
+					$pricing = array(
+						'id'             => $row['id'],
+						'tcgplayerId'    => (int) $row['tcgplayer_id'],
+						'rawMarketPrice' => (float) $row['market_price'],
+						'rawLowPrice'    => (float) $row['low_price'],
+						'rawMidPrice'    => (float) $row['mid_price'],
+						'rawHighPrice'   => (float) $row['high_price'],
+						'psa10Price'     => (float) $row['psa10_price'],
+						'psa9Price'      => (float) $row['psa9_price'],
+						'psa8Price'      => round( (float) $row['market_price'] * 0.90, 2 ),
+						'psa7Price'      => round( (float) $row['market_price'] * 0.72, 2 ),
+						'lastUpdated'    => ! empty( $row['updated_at'] ) ? date( 'Y-m-d', (int) $row['updated_at'] ) : gmdate( 'Y-m-d' ),
+					);
+					if ( ! isset( $results[ $row['id'] ] ) ) {
+						$results[ $row['id'] ] = $pricing;
+					}
+					$results[ (string) $row['tcgplayer_id'] ] = $pricing;
+				}
+			}
+		}
+
+		return $results;
+	}
+
+	/**
 	 * Run column migrations on existing cards table if upgrading from earlier schema.
 	 *
 	 * @param PDO $pdo SQLite PDO instance.

@@ -79,7 +79,18 @@ class Card_Vault_Catalog_REST {
 				array(
 					'methods'             => WP_REST_Server::READABLE,
 					'callback'            => array( __CLASS__, 'handle_cache_stats' ),
-					'permission_callback' => array( __CLASS__, 'check_admin_permission' ),
+					'permission_callback' => array( __CLASS__, 'check_read_permission' ),
+				)
+			);
+
+			// 2d. Batch Price Resync for Vault Collection
+			register_rest_route(
+				$ns,
+				'/catalog/cards/prices',
+				array(
+					'methods'             => WP_REST_Server::CREATABLE,
+					'callback'            => array( __CLASS__, 'handle_resync_prices' ),
+					'permission_callback' => array( __CLASS__, 'check_read_permission' ),
 				)
 			);
 
@@ -387,6 +398,38 @@ class Card_Vault_Catalog_REST {
 		return rest_ensure_response( array(
 			'success' => true,
 			'card'    => $card,
+		) );
+	}
+
+	/**
+	 * Handle batch price resync for multiple cards in player's vault.
+	 *
+	 * @param WP_REST_Request $request
+	 * @return WP_REST_Response
+	 */
+	public static function handle_resync_prices( WP_REST_Request $request ) {
+		$cards = $request->get_param( 'cards' );
+		if ( ! is_array( $cards ) ) {
+			$json = $request->get_json_params();
+			if ( isset( $json['cards'] ) && is_array( $json['cards'] ) ) {
+				$cards = $json['cards'];
+			} elseif ( is_array( $json ) ) {
+				$cards = $json;
+			}
+		}
+		if ( ! is_array( $cards ) ) {
+			$cards = array();
+		}
+
+		$start = microtime( true );
+		$prices = Card_Vault_Catalog_DB::get_cards_pricing_batch( $cards );
+		$elapsed = round( ( microtime( true ) - $start ) * 1000, 2 );
+
+		return rest_ensure_response( array(
+			'success'      => true,
+			'count'        => count( $prices ),
+			'execution_ms' => $elapsed,
+			'prices'       => $prices,
 		) );
 	}
 
