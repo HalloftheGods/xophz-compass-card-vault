@@ -40,21 +40,21 @@ class Card_Vault_Price_History {
 		global $wpdb;
 		require_once ABSPATH . 'wp-admin/includes/upgrade.php';
 
-		$table           = self::get_table_name();
 		$charset_collate = $wpdb->get_charset_collate();
+		$table           = self::get_table_name();
 
 		$sql = "CREATE TABLE {$table} (
 			id bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT,
 			card_id varchar(64) NOT NULL,
 			recorded_date date NOT NULL,
-			raw_market decimal(10,2) DEFAULT 0.00,
-			raw_low decimal(10,2) DEFAULT 0.00,
-			raw_mid decimal(10,2) DEFAULT 0.00,
-			raw_high decimal(10,2) DEFAULT 0.00,
-			psa_9 decimal(10,2) DEFAULT 0.00,
-			psa_10 decimal(10,2) DEFAULT 0.00,
-			bgs_95 decimal(10,2) DEFAULT 0.00,
-			cgc_10 decimal(10,2) DEFAULT 0.00,
+			raw_market decimal(10,2) NOT NULL DEFAULT 0.00,
+			raw_low decimal(10,2) NOT NULL DEFAULT 0.00,
+			raw_mid decimal(10,2) NOT NULL DEFAULT 0.00,
+			raw_high decimal(10,2) NOT NULL DEFAULT 0.00,
+			psa_9 decimal(10,2) NOT NULL DEFAULT 0.00,
+			psa_10 decimal(10,2) NOT NULL DEFAULT 0.00,
+			bgs_95 decimal(10,2) NOT NULL DEFAULT 0.00,
+			cgc_10 decimal(10,2) NOT NULL DEFAULT 0.00,
 			source varchar(50) NOT NULL DEFAULT 'tcgcsv',
 			created_at bigint(20) NOT NULL,
 			PRIMARY KEY  (id),
@@ -67,23 +67,33 @@ class Card_Vault_Price_History {
 	}
 
 	/**
-	 * Record a single price snapshot for a card in MySQL.
-	 * Supports both signatures: record_snapshot($card_id, $pricing, $date) and legacy record_snapshot($pdo, $card_id, $pricing, $date).
+	 * Record a single price snapshot for a card.
 	 *
-	 * @param mixed       $arg1        Card ID or legacy PDO instance.
-	 * @param mixed       $arg2        Pricing array or Card ID.
-	 * @param mixed       $arg3        Date string or Pricing array.
-	 * @param string|null $date_param  Optional explicit date string.
+	 * Supports both ( $card_id, $pricing, $date ) and legacy ( $pdo, $card_id, $pricing, $date ).
+	 *
+	 * @param mixed ...$args Method arguments.
 	 * @return bool True on success.
 	 */
-	public static function record_snapshot( $arg1, $arg2 = array(), $arg3 = null, ?string $date_param = null ): bool {
+	public static function record_snapshot( ...$args ): bool {
 		global $wpdb;
 
-		$card_id = is_string( $arg1 ) ? $arg1 : (string) $arg2;
-		$pricing = is_array( $arg2 ) ? $arg2 : ( is_array( $arg3 ) ? $arg3 : array() );
-		$target_date = is_string( $arg3 ) ? $arg3 : ( ! empty( $date_param ) ? $date_param : gmdate( 'Y-m-d' ) );
-		$created_at  = time();
+		if ( count( $args ) >= 2 && is_array( $args[1] ) ) {
+			$card_id = (string) $args[0];
+			$pricing = (array) $args[1];
+			$date    = isset( $args[2] ) ? (string) $args[2] : null;
+		} else {
+			$card_id = isset( $args[1] ) ? (string) $args[1] : '';
+			$pricing = isset( $args[2] ) ? (array) $args[2] : array();
+			$date    = isset( $args[3] ) ? (string) $args[3] : null;
+		}
+
+		if ( empty( $card_id ) ) {
+			return false;
+		}
+
 		$table       = self::get_table_name();
+		$target_date = ! empty( $date ) ? $date : gmdate( 'Y-m-d' );
+		$created_at  = time();
 
 		$raw_market = (float) ( $pricing['raw_market'] ?? ( $pricing['market_price'] ?? 0.00 ) );
 		$raw_low    = (float) ( $pricing['raw_low'] ?? ( $pricing['low_price'] ?? 0.00 ) );
@@ -95,56 +105,65 @@ class Card_Vault_Price_History {
 		$cgc_10     = (float) ( $pricing['cgc_10'] ?? ( $pricing['cgc10_price'] ?? 0.00 ) );
 		$source     = (string) ( $pricing['source'] ?? 'tcgcsv' );
 
-		$query = "INSERT INTO {$table} (
-				card_id, recorded_date, raw_market, raw_low, raw_mid, raw_high,
-				psa_9, psa_10, bgs_95, cgc_10, source, created_at
-			) VALUES (%s, %s, %f, %f, %f, %f, %f, %f, %f, %f, %s, %d)
-			ON DUPLICATE KEY UPDATE
-				raw_market = VALUES(raw_market),
-				raw_low    = VALUES(raw_low),
-				raw_mid    = VALUES(raw_mid),
-				raw_high   = VALUES(raw_high),
-				psa_9      = CASE WHEN VALUES(psa_9) > 0 THEN VALUES(psa_9) ELSE psa_9 END,
-				psa_10     = CASE WHEN VALUES(psa_10) > 0 THEN VALUES(psa_10) ELSE psa_10 END,
-				bgs_95     = CASE WHEN VALUES(bgs_95) > 0 THEN VALUES(bgs_95) ELSE bgs_95 END,
-				cgc_10     = CASE WHEN VALUES(cgc_10) > 0 THEN VALUES(cgc_10) ELSE cgc_10 END,
-				source     = VALUES(source),
-				created_at = VALUES(created_at)";
+		$sql = "INSERT INTO {$table} (
+			card_id, recorded_date, raw_market, raw_low, raw_mid, raw_high,
+			psa_9, psa_10, bgs_95, cgc_10, source, created_at
+		) VALUES (
+			%s, %s, %f, %f, %f, %f,
+			%f, %f, %f, %f, %s, %d
+		) ON DUPLICATE KEY UPDATE
+			raw_market = VALUES(raw_market),
+			raw_low    = VALUES(raw_low),
+			raw_mid    = VALUES(raw_mid),
+			raw_high   = VALUES(raw_high),
+			psa_9      = CASE WHEN VALUES(psa_9) > 0 THEN VALUES(psa_9) ELSE psa_9 END,
+			psa_10     = CASE WHEN VALUES(psa_10) > 0 THEN VALUES(psa_10) ELSE psa_10 END,
+			bgs_95     = CASE WHEN VALUES(bgs_95) > 0 THEN VALUES(bgs_95) ELSE bgs_95 END,
+			cgc_10     = CASE WHEN VALUES(cgc_10) > 0 THEN VALUES(cgc_10) ELSE cgc_10 END,
+			source     = VALUES(source),
+			created_at = VALUES(created_at)";
 
-		$prepared = $wpdb->prepare(
-			$query,
+		$res = $wpdb->query( $wpdb->prepare(
+			$sql,
 			$card_id, $target_date, $raw_market, $raw_low, $raw_mid, $raw_high,
 			$psa_9, $psa_10, $bgs_95, $cgc_10, $source, $created_at
-		);
+		) );
 
-		return (bool) $wpdb->query( $prepared );
+		return false !== $res;
 	}
 
 	/**
-	 * Record a batch of snapshots inside MySQL via chunked ON DUPLICATE KEY UPDATE.
-	 * Supports both record_batch_snapshots($snapshots, $date) and legacy record_batch_snapshots($pdo, $snapshots, $date).
+	 * Record a batch of snapshots inside a single atomic bulk query.
 	 *
-	 * @param mixed       $arg1       Snapshots array or legacy PDO instance.
-	 * @param mixed       $arg2       Optional date string or snapshots array.
-	 * @param string|null $date_param Optional explicit date string.
+	 * Supports both ( $snapshots, $date ) and legacy ( $pdo, $snapshots, $date ).
+	 *
+	 * @param mixed ...$args Method arguments.
 	 * @return int Number of inserted/updated rows.
 	 */
-	public static function record_batch_snapshots( $arg1, $arg2 = null, ?string $date_param = null ): int {
-		$snapshots = is_array( $arg1 ) ? $arg1 : ( is_array( $arg2 ) ? $arg2 : array() );
+	public static function record_batch_snapshots( ...$args ): int {
+		global $wpdb;
+
+		if ( count( $args ) >= 1 && isset( $args[0] ) && is_array( $args[0] ) ) {
+			$snapshots = (array) $args[0];
+			$date      = isset( $args[1] ) ? (string) $args[1] : null;
+		} else {
+			$snapshots = isset( $args[1] ) ? (array) $args[1] : array();
+			$date      = isset( $args[2] ) ? (string) $args[2] : null;
+		}
+
 		if ( empty( $snapshots ) ) {
 			return 0;
 		}
 
-		global $wpdb;
 		$table       = self::get_table_name();
-		$target_date = is_string( $arg2 ) ? $arg2 : ( ! empty( $date_param ) ? $date_param : gmdate( 'Y-m-d' ) );
+		$target_date = ! empty( $date ) ? $date : gmdate( 'Y-m-d' );
 		$created_at  = time();
 		$count       = 0;
 
-		$chunks = array_chunk( $snapshots, 200 );
+		$chunks = array_chunk( $snapshots, 100 );
 		foreach ( $chunks as $chunk ) {
-			$values       = array();
 			$placeholders = array();
+			$values       = array();
 
 			foreach ( $chunk as $row ) {
 				$card_id = (string) ( $row['card_id'] ?? ( $row['id'] ?? '' ) );
@@ -172,49 +191,57 @@ class Card_Vault_Price_History {
 				continue;
 			}
 
-			$query = "INSERT INTO {$table} (
-					card_id, recorded_date, raw_market, raw_low, raw_mid, raw_high,
-					psa_9, psa_10, bgs_95, cgc_10, source, created_at
-				) VALUES " . implode( ', ', $placeholders ) . "
-				ON DUPLICATE KEY UPDATE
-					raw_market = VALUES(raw_market),
-					raw_low    = VALUES(raw_low),
-					raw_mid    = VALUES(raw_mid),
-					raw_high   = VALUES(raw_high),
-					psa_9      = CASE WHEN VALUES(psa_9) > 0 THEN VALUES(psa_9) ELSE psa_9 END,
-					psa_10     = CASE WHEN VALUES(psa_10) > 0 THEN VALUES(psa_10) ELSE psa_10 END,
-					bgs_95     = CASE WHEN VALUES(bgs_95) > 0 THEN VALUES(bgs_95) ELSE bgs_95 END,
-					cgc_10     = CASE WHEN VALUES(cgc_10) > 0 THEN VALUES(cgc_10) ELSE cgc_10 END,
-					source     = VALUES(source),
-					created_at = VALUES(created_at)";
+			$sql = "INSERT INTO {$table} (
+				card_id, recorded_date, raw_market, raw_low, raw_mid, raw_high,
+				psa_9, psa_10, bgs_95, cgc_10, source, created_at
+			) VALUES " . implode( ', ', $placeholders ) . "
+			ON DUPLICATE KEY UPDATE
+				raw_market = VALUES(raw_market),
+				raw_low    = VALUES(raw_low),
+				raw_mid    = VALUES(raw_mid),
+				raw_high   = VALUES(raw_high),
+				psa_9      = CASE WHEN VALUES(psa_9) > 0 THEN VALUES(psa_9) ELSE psa_9 END,
+				psa_10     = CASE WHEN VALUES(psa_10) > 0 THEN VALUES(psa_10) ELSE psa_10 END,
+				bgs_95     = CASE WHEN VALUES(bgs_95) > 0 THEN VALUES(bgs_95) ELSE bgs_95 END,
+				cgc_10     = CASE WHEN VALUES(cgc_10) > 0 THEN VALUES(cgc_10) ELSE cgc_10 END,
+				source     = VALUES(source),
+				created_at = VALUES(created_at)";
 
-			$wpdb->query( $wpdb->prepare( $query, $values ) );
+			$wpdb->query( $wpdb->prepare( $sql, $values ) );
 		}
 
 		return $count;
 	}
 
 	/**
-	 * Retrieve chronological price history for a single card from MySQL.
-	 * Supports both get_card_history($card_id, $days) and legacy get_card_history($pdo, $card_id, $days).
+	 * Retrieve chronological price history for a single card.
 	 *
-	 * @param mixed $arg1       Card identifier or legacy PDO instance.
-	 * @param mixed $arg2       Days of history (int) or Card identifier (string).
-	 * @param int   $days_param Days of history (default: 30).
+	 * Supports both ( $card_id, $days ) and legacy ( $pdo, $card_id, $days ).
+	 *
+	 * @param mixed ...$args Method arguments.
 	 * @return array List of history points.
 	 */
-	public static function get_card_history( $arg1, $arg2 = null, int $days_param = 30 ): array {
+	public static function get_card_history( ...$args ): array {
 		global $wpdb;
 
-		$card_id = is_string( $arg1 ) ? $arg1 : (string) $arg2;
-		$days    = is_int( $arg2 ) ? $arg2 : $days_param;
-		$days    = max( 1, min( 365, $days ) );
+		if ( count( $args ) >= 1 && is_string( $args[0] ) ) {
+			$card_id = (string) $args[0];
+			$days    = isset( $args[1] ) ? (int) $args[1] : 30;
+		} else {
+			$card_id = isset( $args[1] ) ? (string) $args[1] : '';
+			$days    = isset( $args[2] ) ? (int) $args[2] : 30;
+		}
 
-		$cutoff_date = gmdate( 'Y-m-d', strtotime( "-{$days} days" ) );
+		if ( empty( $card_id ) ) {
+			return array();
+		}
+
 		$table       = self::get_table_name();
+		$days        = max( 1, min( 365, $days ) );
+		$cutoff_date = gmdate( 'Y-m-d', strtotime( "-{$days} days" ) );
 
-		$sql = "
-			SELECT
+		$sql = $wpdb->prepare(
+			"SELECT
 				recorded_date AS date,
 				raw_market AS rawMarketPrice,
 				raw_low AS rawLowPrice,
@@ -224,44 +251,52 @@ class Card_Vault_Price_History {
 				source
 			FROM {$table}
 			WHERE card_id = %s AND recorded_date >= %s
-			ORDER BY recorded_date ASC
-		";
+			ORDER BY recorded_date ASC",
+			$card_id,
+			$cutoff_date
+		);
 
-		$rows = $wpdb->get_results( $wpdb->prepare( $sql, $card_id, $cutoff_date ), ARRAY_A );
+		$rows = $wpdb->get_results( $sql, ARRAY_A );
 		if ( empty( $rows ) ) {
 			return array();
 		}
 
-		foreach ( $rows as &$r ) {
-			$r['rawMarketPrice'] = (float) $r['rawMarketPrice'];
-			$r['rawLowPrice']    = (float) $r['rawLowPrice'];
-			$r['rawHighPrice']   = (float) $r['rawHighPrice'];
-			$r['psa9Price']      = (float) $r['psa9Price'];
-			$r['psa10Price']     = (float) $r['psa10Price'];
-		}
-
-		return $rows;
+		return array_map( function( $row ) {
+			return array(
+				'date'           => (string) $row['date'],
+				'rawMarketPrice' => (float) $row['rawMarketPrice'],
+				'rawLowPrice'    => (float) $row['rawLowPrice'],
+				'rawHighPrice'   => (float) $row['rawHighPrice'],
+				'psa9Price'      => (float) $row['psa9Price'],
+				'psa10Price'     => (float) $row['psa10Price'],
+				'source'         => (string) $row['source'],
+			);
+		}, $rows );
 	}
 
 	/**
-	 * Compute genuine historical portfolio valuation points from recorded MySQL snapshots.
-	 * Supports both get_portfolio_history($items, $days) and legacy get_portfolio_history($pdo, $items, $days).
+	 * Compute genuine historical portfolio valuation points from recorded snapshots.
 	 *
-	 * @param mixed $arg1       Array of inventory items or legacy PDO instance.
-	 * @param mixed $arg2       Days (int) or items array.
-	 * @param int   $days_param Number of days (default: 30).
+	 * Supports both ( $items, $days ) and legacy ( $pdo, $items, $days ).
+	 *
+	 * @param mixed ...$args Method arguments.
 	 * @return array List of PerformancePoints formatted for PortfolioSparkline.
 	 */
-	public static function get_portfolio_history( $arg1, $arg2 = null, int $days_param = 30 ): array {
-		$items = is_array( $arg1 ) ? $arg1 : ( is_array( $arg2 ) ? $arg2 : array() );
-		$days  = is_int( $arg2 ) ? $arg2 : $days_param;
+	public static function get_portfolio_history( ...$args ): array {
+		global $wpdb;
+
+		if ( count( $args ) >= 1 && is_array( $args[0] ) ) {
+			$items = (array) $args[0];
+			$days  = isset( $args[1] ) ? (int) $args[1] : 30;
+		} else {
+			$items = isset( $args[1] ) ? (array) $args[1] : array();
+			$days  = isset( $args[2] ) ? (int) $args[2] : 30;
+		}
 
 		if ( empty( $items ) ) {
 			return array();
 		}
 
-		global $wpdb;
-		$table       = self::get_table_name();
 		$days        = max( 1, min( 365, $days ) );
 		$cutoff_date = gmdate( 'Y-m-d', strtotime( "-{$days} days" ) );
 
@@ -280,13 +315,13 @@ class Card_Vault_Price_History {
 
 			// Multiplier for condition
 			$cond_multiplier = 1.0;
-			if ( $cond === 'LP' ) {
+			if ( 'LP' === $cond ) {
 				$cond_multiplier = 0.85;
-			} elseif ( $cond === 'MP' ) {
+			} elseif ( 'MP' === $cond ) {
 				$cond_multiplier = 0.70;
-			} elseif ( $cond === 'HP' ) {
+			} elseif ( 'HP' === $cond ) {
 				$cond_multiplier = 0.50;
-			} elseif ( $cond === 'DMG' ) {
+			} elseif ( 'DMG' === $cond ) {
 				$cond_multiplier = 0.25;
 			}
 
@@ -306,40 +341,44 @@ class Card_Vault_Price_History {
 			return array();
 		}
 
+		$table        = self::get_table_name();
 		$card_ids     = array_keys( $card_map );
-		$placeholders = implode( ',', array_fill( 0, count( $card_ids ), '%s' ) );
-		$sql          = "
-			SELECT card_id, recorded_date, raw_market, psa_10
-			FROM {$table}
-			WHERE card_id IN ({$placeholders}) AND recorded_date >= %s
-			ORDER BY recorded_date ASC
-		";
-
-		$params = array_merge( $card_ids, array( $cutoff_date ) );
-		$rows   = $wpdb->get_results( $wpdb->prepare( $sql, $params ), ARRAY_A );
-		if ( empty( $rows ) ) {
-			return array();
-		}
-
-		// Group values by date
 		$daily_totals = array();
-		foreach ( $rows as $r ) {
-			$dt  = (string) $r['recorded_date'];
-			$cid = (string) $r['card_id'];
-			$cfg = $card_map[ $cid ] ?? array( 'qty' => 1, 'cond_multiplier' => 1.0 );
 
-			if ( ! isset( $daily_totals[ $dt ] ) ) {
-				$daily_totals[ $dt ] = array(
-					'raw'   => 0.00,
-					'psa10' => 0.00,
-				);
+		// Query history rows in chunks of 100
+		$chunks = array_chunk( $card_ids, 100 );
+		foreach ( $chunks as $chunk ) {
+			$placeholders = implode( ',', array_fill( 0, count( $chunk ), '%s' ) );
+			$params       = array_merge( $chunk, array( $cutoff_date ) );
+			$sql          = $wpdb->prepare(
+				"SELECT card_id, recorded_date, raw_market, psa_10
+				 FROM {$table}
+				 WHERE card_id IN ({$placeholders}) AND recorded_date >= %s
+				 ORDER BY recorded_date ASC",
+				$params
+			);
+
+			$rows = $wpdb->get_results( $sql, ARRAY_A );
+			if ( ! empty( $rows ) ) {
+				foreach ( $rows as $r ) {
+					$dt  = (string) $r['recorded_date'];
+					$cid = (string) $r['card_id'];
+					$cfg = $card_map[ $cid ] ?? array( 'qty' => 1, 'cond_multiplier' => 1.0 );
+
+					if ( ! isset( $daily_totals[ $dt ] ) ) {
+						$daily_totals[ $dt ] = array(
+							'raw'   => 0.00,
+							'psa10' => 0.00,
+						);
+					}
+
+					$raw_market = (float) $r['raw_market'];
+					$psa_10     = (float) $r['psa_10'];
+
+					$daily_totals[ $dt ]['raw']   += ( $raw_market * $cfg['cond_multiplier'] * $cfg['qty'] );
+					$daily_totals[ $dt ]['psa10'] += ( $psa_10 * $cfg['qty'] );
+				}
 			}
-
-			$raw_market = (float) $r['raw_market'];
-			$psa_10     = (float) $r['psa_10'];
-
-			$daily_totals[ $dt ]['raw']   += ( $raw_market * $cfg['cond_multiplier'] * $cfg['qty'] );
-			$daily_totals[ $dt ]['psa10'] += ( $psa_10 * $cfg['qty'] );
 		}
 
 		ksort( $daily_totals );
@@ -375,24 +414,33 @@ class Card_Vault_Price_History {
 	/**
 	 * Prune old daily records by compressing points older than $keep_daily_days to weekly points in MySQL.
 	 * Preserves Sundays (DAYOFWEEK = 1).
-	 * Supports both prune_history($days) and legacy prune_history($pdo, $days).
 	 *
-	 * @param mixed $arg1       Days (int) or legacy PDO instance.
-	 * @param int   $days_param Number of days to preserve exact daily snapshots (default: 90).
+	 * Supports both ( $keep_daily_days ) and legacy ( $pdo, $keep_daily_days ).
+	 *
+	 * @param mixed ...$args Method arguments.
 	 * @return int Rows removed.
 	 */
-	public static function prune_history( $arg1 = null, int $days_param = 90 ): int {
-		$days        = is_int( $arg1 ) ? $arg1 : $days_param;
-		$cutoff_date = gmdate( 'Y-m-d', strtotime( "-{$days} days" ) );
-
+	public static function prune_history( ...$args ): int {
 		global $wpdb;
-		$table = self::get_table_name();
 
+		if ( count( $args ) >= 1 && is_int( $args[0] ) ) {
+			$keep_daily_days = (int) $args[0];
+		} else {
+			$keep_daily_days = isset( $args[1] ) ? (int) $args[1] : 90;
+		}
+
+		$table       = self::get_table_name();
+		$cutoff_date = gmdate( 'Y-m-d', strtotime( "-{$keep_daily_days} days" ) );
+
+		// Delete records older than cutoff that are NOT Sunday (DAYOFWEEK != 1 in MySQL)
 		$sql = $wpdb->prepare(
-			"DELETE FROM {$table} WHERE recorded_date < %s AND DAYOFWEEK(recorded_date) != 1",
+			"DELETE FROM {$table}
+			 WHERE recorded_date < %s
+			 AND DAYOFWEEK(recorded_date) != 1",
 			$cutoff_date
 		);
 
-		return (int) $wpdb->query( $sql );
+		$deleted = $wpdb->query( $sql );
+		return false !== $deleted ? (int) $deleted : 0;
 	}
 }

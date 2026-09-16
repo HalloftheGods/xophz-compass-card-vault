@@ -159,10 +159,10 @@ class Card_Vault_Catalog_DB {
 			$wpdb->query( "ALTER TABLE {$cards_table} ADD FULLTEXT KEY ft_card_search (name, clean_name, group_name)" );
 		}
 
-		// 1b. Schema column migration check for existing databases
+		// 1b. Schema column migration check for existing MySQL databases
 		self::migrate_cards_columns();
 
-		// 1c. Initialize Price History Time-Series Table
+		// 1c. Initialize Price History Time-Series Table in MySQL
 		if ( class_exists( 'Card_Vault_Price_History' ) ) {
 			Card_Vault_Price_History::ensure_table();
 		}
@@ -545,7 +545,15 @@ class Card_Vault_Catalog_DB {
 
 		$col_list       = implode( ', ', $columns );
 		$update_clauses = array();
-		foreach ( array( 'category_name', 'group_name', 'name', 'clean_name', 'sub_type_name', 'raw_number', 'clean_number', 'numeric_number', 'number_prefix', 'total_set_number', 'number_variants', 'rarity', 'card_type', 'stage_or_subtype', 'hp', 'card_text', 'upc', 'market_price', 'low_price', 'mid_price', 'high_price', 'direct_low_price', 'psa9_price', 'psa10_price', 'bgs95_price', 'cgc10_price', 'pricing_source', 'updated_at', 'image_url', 'tcgplayer_url' ) as $up_col ) {
+		$up_columns     = array(
+			'category_name', 'group_name', 'name', 'clean_name', 'sub_type_name',
+			'raw_number', 'clean_number', 'numeric_number', 'number_prefix', 'total_set_number', 'number_variants',
+			'rarity', 'card_type', 'stage_or_subtype', 'hp', 'card_text', 'upc',
+			'market_price', 'low_price', 'mid_price', 'high_price', 'direct_low_price',
+			'psa9_price', 'psa10_price', 'bgs95_price', 'cgc10_price', 'pricing_source',
+			'updated_at', 'image_url', 'tcgplayer_url',
+		);
+		foreach ( $up_columns as $up_col ) {
 			$update_clauses[] = "{$up_col} = VALUES({$up_col})";
 		}
 		$update_str     = implode( ', ', $update_clauses );
@@ -572,29 +580,36 @@ class Card_Vault_Catalog_DB {
 	}
 
 	/**
-	 * Retrieve fresh pricing metrics for multiple cards in batch.
+	 * Retrieve pricing for multiple cards in a single batch query via MySQL.
 	 *
-	 * Queries MySQL cards table using indexed primary keys and TCGPlayer IDs.
-	 *
-	 * @param array $card_identifiers List of card objects or string IDs.
-	 * @return array Map of card_id => pricing attributes.
+	 * @param array $card_identifiers List of card IDs, tcgplayer_ids, or card objects.
+	 * @return array Map of card_id => CardPricing envelope.
 	 */
 	public static function get_cards_pricing_batch( array $card_identifiers ): array {
 		global $wpdb;
-		$results = array();
 		if ( empty( $card_identifiers ) ) {
-			return $results;
+			return array();
 		}
 
-		$ids           = array();
+		$table   = self::get_table_name();
+		$results = array();
+
+		$string_ids    = array();
 		$tcgplayer_ids = array();
 
 		foreach ( $card_identifiers as $item ) {
 			if ( is_string( $item ) ) {
-				$ids[] = sanitize_text_field( trim( $item ) );
+				$trimmed = trim( $item );
+				if ( ! empty( $trimmed ) ) {
+					$string_ids[] = $trimmed;
+					if ( ctype_digit( $trimmed ) ) {
+						$tcgplayer_ids[] = (int) $trimmed;
+					}
+				}
 			} elseif ( is_array( $item ) ) {
 				if ( ! empty( $item['id'] ) ) {
-					$ids[] = sanitize_text_field( trim( (string) $item['id'] ) );
+					$trimmed      = trim( (string) $item['id'] );
+					$string_ids[] = $trimmed;
 				}
 				if ( ! empty( $item['tcgplayerId'] ) || ! empty( $item['tcgplayer_id'] ) ) {
 					$pid = (int) ( $item['tcgplayerId'] ?? $item['tcgplayer_id'] );
@@ -605,55 +620,63 @@ class Card_Vault_Catalog_DB {
 			}
 		}
 
-		$table = self::get_table_name();
-
-		// 1. Query by direct IDs
-		if ( ! empty( $ids ) ) {
-			$ids    = array_values( array_unique( $ids ) );
-			$chunks = array_chunk( $ids, 100 );
+		// 1. Query by string card IDs in chunks of 100
+		if ( ! empty( $string_ids ) ) {
+			$string_ids = array_values( array_unique( $string_ids ) );
+			$chunks     = array_chunk( $string_ids, 100 );
 			foreach ( $chunks as $chunk ) {
 				$placeholders = implode( ',', array_fill( 0, count( $chunk ), '%s' ) );
 				$query        = $wpdb->prepare(
-					"SELECT id, tcgplayer_id, name, market_price, low_price, mid_price, high_price, psa10_price, psa9_price, updated_at FROM {$table} WHERE id IN ($placeholders)",
+					"SELECT id, tcgplayer_id, name, market_price, low_price, mid_price, high_price, direct_low_price, psa10_price, psa9_price, bgs95_price, cgc10_price, pricing_source, updated_at
+					 FROM {$table}
+					 WHERE id IN ({$placeholders})",
 					$chunk
 				);
 				$rows         = $wpdb->get_results( $query, ARRAY_A );
 				if ( ! empty( $rows ) ) {
 					foreach ( $rows as $row ) {
-						$results[ $row['id'] ] = array(
+						$pricing = array(
 							'id'             => $row['id'],
 							'tcgplayerId'    => (int) $row['tcgplayer_id'],
 							'rawMarketPrice' => (float) $row['market_price'],
 							'rawLowPrice'    => (float) $row['low_price'],
 							'rawMidPrice'    => (float) $row['mid_price'],
 							'rawHighPrice'   => (float) $row['high_price'],
-							'psa10Price'     => (float) ( $row['psa10_price'] ?? 0.00 ),
-							'psa9Price'      => (float) ( $row['psa9_price'] ?? 0.00 ),
+							'directLowPrice' => isset( $row['direct_low_price'] ) ? (float) $row['direct_low_price'] : null,
+							'psa10Price'     => (float) $row['psa10_price'],
+							'psa9Price'      => (float) $row['psa9_price'],
+							'bgs95Price'     => (float) $row['bgs95_price'],
+							'cgc10Price'     => (float) $row['cgc10_price'],
+							'pricingSource'  => $row['pricing_source'] ?? 'tcgcsv',
 							'psa8Price'      => round( (float) $row['market_price'] * 0.90, 2 ),
 							'psa7Price'      => round( (float) $row['market_price'] * 0.72, 2 ),
 							'lastUpdated'    => ! empty( $row['updated_at'] ) ? date( 'Y-m-d', (int) $row['updated_at'] ) : gmdate( 'Y-m-d' ),
 						);
+						$results[ $row['id'] ]                    = $pricing;
+						$results[ (string) $row['tcgplayer_id'] ] = $pricing;
 					}
 				}
 			}
 		}
 
-		// 2. Query by tcgplayer_ids for missing items
+		// 2. Query by numeric tcgplayer_ids for missing items
 		if ( ! empty( $tcgplayer_ids ) ) {
-			$missing_pids = array();
-			foreach ( $tcgplayer_ids as $pid ) {
-				if ( ! isset( $results[ (string) $pid ] ) ) {
-					$missing_pids[] = $pid;
+			$missing_tcgplayer_ids = array();
+			foreach ( $tcgplayer_ids as $tid ) {
+				if ( ! isset( $results[ (string) $tid ] ) ) {
+					$missing_tcgplayer_ids[] = $tid;
 				}
 			}
 
-			if ( ! empty( $missing_pids ) ) {
-				$missing_pids = array_values( array_unique( $missing_pids ) );
-				$chunks       = array_chunk( $missing_pids, 100 );
+			if ( ! empty( $missing_tcgplayer_ids ) ) {
+				$missing_tcgplayer_ids = array_values( array_unique( $missing_tcgplayer_ids ) );
+				$chunks                = array_chunk( $missing_tcgplayer_ids, 100 );
 				foreach ( $chunks as $chunk ) {
 					$placeholders = implode( ',', array_fill( 0, count( $chunk ), '%d' ) );
 					$query        = $wpdb->prepare(
-						"SELECT id, tcgplayer_id, name, market_price, low_price, mid_price, high_price, psa10_price, psa9_price, updated_at FROM {$table} WHERE tcgplayer_id IN ($placeholders)",
+						"SELECT id, tcgplayer_id, name, market_price, low_price, mid_price, high_price, direct_low_price, psa10_price, psa9_price, bgs95_price, cgc10_price, pricing_source, updated_at
+						 FROM {$table}
+						 WHERE tcgplayer_id IN ({$placeholders})",
 						$chunk
 					);
 					$rows         = $wpdb->get_results( $query, ARRAY_A );
@@ -666,8 +689,12 @@ class Card_Vault_Catalog_DB {
 								'rawLowPrice'    => (float) $row['low_price'],
 								'rawMidPrice'    => (float) $row['mid_price'],
 								'rawHighPrice'   => (float) $row['high_price'],
-								'psa10Price'     => (float) ( $row['psa10_price'] ?? 0.00 ),
-								'psa9Price'      => (float) ( $row['psa9_price'] ?? 0.00 ),
+								'directLowPrice' => isset( $row['direct_low_price'] ) ? (float) $row['direct_low_price'] : null,
+								'psa10Price'     => (float) $row['psa10_price'],
+								'psa9Price'      => (float) $row['psa9_price'],
+								'bgs95Price'     => (float) $row['bgs95_price'],
+								'cgc10Price'     => (float) $row['cgc10_price'],
+								'pricingSource'  => $row['pricing_source'] ?? 'tcgcsv',
 								'psa8Price'      => round( (float) $row['market_price'] * 0.90, 2 ),
 								'psa7Price'      => round( (float) $row['market_price'] * 0.72, 2 ),
 								'lastUpdated'    => ! empty( $row['updated_at'] ) ? date( 'Y-m-d', (int) $row['updated_at'] ) : gmdate( 'Y-m-d' ),
@@ -686,27 +713,32 @@ class Card_Vault_Catalog_DB {
 	}
 
 	/**
-	 * Run column migrations on existing cards table if upgrading from earlier schema.
+	 * Run column migrations on existing MySQL cards table if upgrading from earlier schema.
 	 */
 	public static function migrate_cards_columns(): void {
 		global $wpdb;
 		$table = self::get_table_name();
 
-		$existing_cols = $wpdb->get_col( "SHOW COLUMNS FROM {$table}" );
-		if ( empty( $existing_cols ) ) {
+		$table_exists = $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $table ) );
+		if ( $table_exists !== $table ) {
+			return;
+		}
+
+		$existing_columns = $wpdb->get_col( "SHOW COLUMNS FROM {$table}" );
+		if ( empty( $existing_columns ) ) {
 			return;
 		}
 
 		$new_cols = array(
-			'psa9_price'     => 'decimal(10,2) DEFAULT 0.00',
-			'psa10_price'    => 'decimal(10,2) DEFAULT 0.00',
-			'bgs95_price'    => 'decimal(10,2) DEFAULT 0.00',
-			'cgc10_price'    => 'decimal(10,2) DEFAULT 0.00',
-			'pricing_source' => "varchar(50) DEFAULT 'tcgcsv'",
+			'psa9_price'     => 'decimal(10,2) DEFAULT 0.00 AFTER direct_low_price',
+			'psa10_price'    => 'decimal(10,2) DEFAULT 0.00 AFTER psa9_price',
+			'bgs95_price'    => 'decimal(10,2) DEFAULT 0.00 AFTER psa10_price',
+			'cgc10_price'    => 'decimal(10,2) DEFAULT 0.00 AFTER bgs95_price',
+			'pricing_source' => "varchar(50) DEFAULT 'tcgcsv' AFTER cgc10_price",
 		);
 
 		foreach ( $new_cols as $col_name => $col_def ) {
-			if ( ! in_array( $col_name, $existing_cols, true ) ) {
+			if ( ! in_array( $col_name, $existing_columns, true ) ) {
 				$wpdb->query( "ALTER TABLE {$table} ADD COLUMN {$col_name} {$col_def}" );
 			}
 		}

@@ -532,7 +532,8 @@ class Card_Vault_Catalog_CLI {
 	 */
 	public function prune_history( $args, $assoc_args ) {
 		$days = ! empty( $assoc_args['days'] ) ? (int) $assoc_args['days'] : 90;
-		$deleted = Card_Vault_Price_History::prune_history( $days );
+		$pdo = Card_Vault_Catalog_DB::get_connection();
+		$deleted = Card_Vault_Price_History::prune_history( $pdo, $days );
 		WP_CLI::success( sprintf( 'Pruned %d redundant historical snapshots older than %d days.', $deleted, $days ) );
 	}
 }
