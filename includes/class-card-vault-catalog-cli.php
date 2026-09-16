@@ -485,6 +485,57 @@ class Card_Vault_Catalog_CLI {
 			}
 		}
 	}
+
+	/**
+	 * Ingest PriceCharting CSV export file to update slab prices and record price history.
+	 *
+	 * ## OPTIONS
+	 *
+	 * <file>
+	 * : Absolute or relative path to PriceCharting CSV file.
+	 *
+	 * ## EXAMPLES
+	 *
+	 *     wp card-vault import-pricecharting /path/to/pricecharting.csv
+	 */
+	public function import_pricecharting( $args, $assoc_args ) {
+		if ( empty( $args[0] ) ) {
+			WP_CLI::error( 'Please provide the path to a PriceCharting CSV file.' );
+		}
+
+		$path = $args[0];
+		if ( ! file_exists( $path ) ) {
+			WP_CLI::error( "File not found: {$path}" );
+		}
+
+		WP_CLI::log( "Ingesting PriceCharting CSV: {$path}..." );
+		$result = Card_Vault_Catalog_Importer::ingest_pricecharting_csv( $path );
+
+		if ( $result['success'] ) {
+			WP_CLI::success( sprintf( 'Successfully matched and updated %d cards in %s seconds.', $result['matched_count'], $result['elapsed_sec'] ) );
+		} else {
+			WP_CLI::error( 'Ingest failed: ' . ( $result['error'] ?? 'Unknown error' ) );
+		}
+	}
+
+	/**
+	 * Prune old daily price history snapshots to weekly rollups to conserve SQLite storage.
+	 *
+	 * ## OPTIONS
+	 *
+	 * [--days=<days>]
+	 * : Number of days to keep daily granularity (default: 90).
+	 *
+	 * ## EXAMPLES
+	 *
+	 *     wp card-vault prune-history --days=90
+	 */
+	public function prune_history( $args, $assoc_args ) {
+		$days = ! empty( $assoc_args['days'] ) ? (int) $assoc_args['days'] : 90;
+		$pdo = Card_Vault_Catalog_DB::get_connection();
+		$deleted = Card_Vault_Price_History::prune_history( $pdo, $days );
+		WP_CLI::success( sprintf( 'Pruned %d redundant historical snapshots older than %d days.', $deleted, $days ) );
+	}
 }
 
 WP_CLI::add_command( 'card-vault', 'Card_Vault_Catalog_CLI' );
