@@ -3,6 +3,14 @@
 All notable changes to this WordPress plugin submodule will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [2026-09-16]
+
+### Changed
+- **MySQL-Native Catalog Pricing & Price History Transition (`includes/class-card-vault-catalog-db.php`, `includes/class-card-vault-price-history.php`)**: Transitioned graded slab pricing (`psa9_price`, `psa10_price`, `bgs95_price`, `cgc10_price`, `pricing_source`) and historical price snapshots from legacy SQLite `cards.db` to WordPress MySQL InnoDB tables (`{$wpdb->prefix}card_vault_cards` and `{$wpdb->prefix}card_vault_price_history`).
+- **Batch Pricing Lookup Engine (`Card_Vault_Catalog_DB::get_cards_pricing_batch`)**: Refactored batch pricing query to directly query the MySQL cards table using `$wpdb` with chunked prepared statements, supporting both direct card IDs and numeric TCGPlayer IDs.
+- **PriceCharting CSV Ingestion (`Card_Vault_Catalog_Importer::ingest_pricecharting_csv`)**: Updated composite matching parser and slab pricing updates to operate natively against MySQL `$cards_table` and MySQL price history tables.
+- **WP-CLI Prune History (`Card_Vault_Catalog_CLI::prune_history`)**: Updated pruning routine to execute directly on MySQL `$wpdb` without requiring SQLite PDO connections.
+
 ## [2026-09-15]
 
 ### Added
