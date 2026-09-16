@@ -119,6 +119,11 @@ class Card_Vault_Catalog_DB {
 			mid_price decimal(10,2) DEFAULT 0.00,
 			high_price decimal(10,2) DEFAULT 0.00,
 			direct_low_price decimal(10,2) DEFAULT NULL,
+			psa9_price decimal(10,2) DEFAULT 0.00,
+			psa10_price decimal(10,2) DEFAULT 0.00,
+			bgs95_price decimal(10,2) DEFAULT 0.00,
+			cgc10_price decimal(10,2) DEFAULT 0.00,
+			pricing_source varchar(50) DEFAULT 'tcgcsv',
 			updated_at bigint(20) NOT NULL,
 			image_url text DEFAULT NULL,
 			tcgplayer_url text DEFAULT NULL,
@@ -529,12 +534,13 @@ class Card_Vault_Catalog_DB {
 			'raw_number', 'clean_number', 'numeric_number', 'number_prefix', 'total_set_number', 'number_variants',
 			'rarity', 'card_type', 'stage_or_subtype', 'hp', 'card_text', 'upc',
 			'market_price', 'low_price', 'mid_price', 'high_price', 'direct_low_price',
+			'psa9_price', 'psa10_price', 'bgs95_price', 'cgc10_price', 'pricing_source',
 			'updated_at', 'image_url', 'tcgplayer_url',
 		);
 
 		$col_list       = implode( ', ', $columns );
 		$update_clauses = array();
-		foreach ( array( 'category_name', 'group_name', 'name', 'clean_name', 'sub_type_name', 'raw_number', 'clean_number', 'numeric_number', 'number_prefix', 'total_set_number', 'number_variants', 'rarity', 'card_type', 'stage_or_subtype', 'hp', 'card_text', 'upc', 'market_price', 'low_price', 'mid_price', 'high_price', 'direct_low_price', 'updated_at', 'image_url', 'tcgplayer_url' ) as $up_col ) {
+		foreach ( array( 'category_name', 'group_name', 'name', 'clean_name', 'sub_type_name', 'raw_number', 'clean_number', 'numeric_number', 'number_prefix', 'total_set_number', 'number_variants', 'rarity', 'card_type', 'stage_or_subtype', 'hp', 'card_text', 'upc', 'market_price', 'low_price', 'mid_price', 'high_price', 'direct_low_price', 'psa9_price', 'psa10_price', 'bgs95_price', 'cgc10_price', 'pricing_source', 'updated_at', 'image_url', 'tcgplayer_url' ) as $up_col ) {
 			$update_clauses[] = "{$up_col} = VALUES({$up_col})";
 		}
 		$update_str     = implode( ', ', $update_clauses );
