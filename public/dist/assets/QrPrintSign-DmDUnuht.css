@@ -1,0 +1,1 @@
+@media print{body *{visibility:hidden}#print-table-sign-container,#print-table-sign-container *{visibility:visible}#print-table-sign-container{width:100%;min-height:100%;position:absolute;top:0;left:0;color:#000!important;background:#fff!important;flex-direction:column!important;align-items:center!important;display:flex!important}}
