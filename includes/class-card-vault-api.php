@@ -294,8 +294,9 @@ class Card_Vault_API {
 	 */
 	public function handle_scan_card( $request ) {
 		$params = $request->get_json_params();
-		$image_b64 = $params['imageBase64'] ?? '';
-		$mime_type = $params['mimeType'] ?? 'image/jpeg';
+		$image_b64  = $params['imageBase64'] ?? $params['image'] ?? '';
+		$mime_type  = $params['mimeType'] ?? 'image/jpeg';
+		$text_hint  = sanitize_text_field( $params['textHint'] ?? $params['query'] ?? '' );
 
 		if ( empty( $image_b64 ) ) {
 			return new WP_REST_Response( array( 'error' => 'No image data provided.' ), 400 );
@@ -309,6 +310,12 @@ class Card_Vault_API {
 
 		$system_instruction = 'You are an expert Pokemon card authenticator and cataloger for My Card Vault. Inspect the provided card photo and extract: cardName, setName, cardNumber, rarity, finish (Holo, Reverse Holo, Non-Holo), estimatedCondition (NM, LP, MP, HP, DMG), confidence (number 0-1), and visualNotes. Output valid JSON matching this schema exactly.';
 
+		$prompt_text = 'Identify this Pokemon card.';
+		if ( ! empty( $text_hint ) ) {
+			$prompt_text .= sprintf( ' User text context/hint: %s.', $text_hint );
+		}
+		$prompt_text .= ' Return JSON with keys: cardName, setName, cardNumber, rarity, finish, estimatedCondition, confidence, visualNotes.';
+
 		$prompt_parts = array(
 			array(
 				'inlineData' => array(
@@ -317,7 +324,7 @@ class Card_Vault_API {
 				),
 			),
 			array(
-				'text' => 'Identify this Pokemon card. Return JSON with keys: cardName, setName, cardNumber, rarity, finish, estimatedCondition, confidence, visualNotes.',
+				'text' => $prompt_text,
 			),
 		);
 
@@ -328,6 +335,96 @@ class Card_Vault_API {
 				'code'    => $result->get_error_code(),
 			), 500 );
 		}
+
+		// Attempt catalog match if database is available
+		$matched_card = null;
+		$card_name    = $result['cardName'] ?? '';
+		$card_number  = $result['cardNumber'] ?? '';
+		$set_name     = $result['setName'] ?? '';
+
+		if ( class_exists( 'Card_Vault_Catalog_DB' ) ) {
+			$matched_cards = array();
+			if ( ! empty( $card_name ) ) {
+				$search_q = trim( $card_name . ' ' . $card_number );
+				$matched_cards = Card_Vault_Catalog_DB::search_cards( $search_q, array(), 1 );
+				if ( empty( $matched_cards ) ) {
+					$matched_cards = Card_Vault_Catalog_DB::search_cards( $card_name, array(), 1 );
+				}
+			}
+			// If still empty and text_hint was provided, search by text_hint
+			if ( empty( $matched_cards ) && ! empty( $text_hint ) ) {
+				$matched_cards = Card_Vault_Catalog_DB::search_cards( $text_hint, array(), 1 );
+			}
+			if ( ! empty( $matched_cards[0] ) ) {
+				$card_row = $matched_cards[0];
+				$matched_card = array(
+					'id'             => (string) $card_row['id'],
+					'name'           => $card_row['name'],
+					'supertype'      => $card_row['stage_or_subtype'] ?: 'Pokémon',
+					'subtypes'       => ! empty( $card_row['sub_type_name'] ) ? array( $card_row['sub_type_name'] ) : array( 'Basic' ),
+					'hp'             => ! empty( $card_row['hp'] ) ? (string) $card_row['hp'] : null,
+					'types'          => ! empty( $card_row['card_type'] ) ? array( $card_row['card_type'] ) : array(),
+					'setName'        => $card_row['group_name'] ?: $set_name,
+					'setCode'        => $card_row['group_abbrev'] ?: (string) $card_row['group_id'],
+					'setSeries'      => $card_row['group_name'] ?: $set_name,
+					'setReleaseYear' => ! empty( $card_row['updated_at'] ) ? (int) date( 'Y', $card_row['updated_at'] ) : (int) date( 'Y' ),
+					'number'         => (string) ( $card_row['clean_number'] ?: $card_row['raw_number'] ?: $card_number ),
+					'totalSetNumber' => ! empty( $card_row['total_set_number'] ) ? (string) $card_row['total_set_number'] : '',
+					'rarity'         => $card_row['rarity'] ?: ( $result['rarity'] ?? 'Common' ),
+					'artist'         => '',
+					'imageUrl'       => $card_row['image_url'] ?: '',
+					'smallImageUrl'  => $card_row['image_url'] ?: '',
+					'pricing'        => array(
+						'rawMarketPrice'        => (float) ( $card_row['market_price'] ?? 0.0 ),
+						'rawLowPrice'           => (float) ( $card_row['low_price'] ?? 0.0 ),
+						'rawMidPrice'           => (float) ( $card_row['mid_price'] ?? 0.0 ),
+						'rawHighPrice'          => (float) ( $card_row['high_price'] ?? 0.0 ),
+						'psa9Price'             => (float) ( $card_row['psa9_price'] ?? 0.0 ),
+						'psa10Price'            => (float) ( $card_row['psa10_price'] ?? 0.0 ),
+						'lastUpdated'           => ! empty( $card_row['updated_at'] ) ? gmdate( 'c', $card_row['updated_at'] ) : gmdate( 'c' ),
+						'source'                => $card_row['pricing_source'] ?: 'TCGPlayer',
+						'thirtyDayTrendPercent' => 0.0,
+					),
+				);
+			}
+		}
+
+		// If no DB match, construct a valid domain PokemonCard envelope from Gemini scan data
+		if ( ! $matched_card && ! empty( $card_name ) ) {
+			$clean_num = trim( explode( '/', $card_number )[0] );
+			$total_num = strpos( $card_number, '/' ) !== false ? trim( explode( '/', $card_number )[1] ) : '';
+			$matched_card = array(
+				'id'             => 'scan-' . sanitize_title( $card_name ) . '-' . ( $clean_num ?: '0' ),
+				'name'           => $card_name,
+				'supertype'      => 'Pokémon',
+				'subtypes'       => array( 'Basic' ),
+				'hp'             => null,
+				'types'          => array(),
+				'setName'        => $set_name ?: 'Scanned Set',
+				'setCode'        => 'SCAN',
+				'setSeries'      => $set_name ?: 'Scanned Set',
+				'setReleaseYear' => (int) date( 'Y' ),
+				'number'         => $clean_num ?: $card_number,
+				'totalSetNumber' => $total_num,
+				'rarity'         => $result['rarity'] ?? 'Common',
+				'artist'         => '',
+				'imageUrl'       => '',
+				'smallImageUrl'  => '',
+				'pricing'        => array(
+					'rawMarketPrice'        => 0.0,
+					'rawLowPrice'           => 0.0,
+					'rawMidPrice'           => 0.0,
+					'rawHighPrice'          => 0.0,
+					'psa9Price'             => 0.0,
+					'psa10Price'            => 0.0,
+					'lastUpdated'           => gmdate( 'c' ),
+					'source'                => 'Gemini Vision Scan',
+					'thirtyDayTrendPercent' => 0.0,
+				),
+			);
+		}
+
+		$result['matchedCard'] = $matched_card;
 
 		return new WP_REST_Response( $result, 200 );
 	}

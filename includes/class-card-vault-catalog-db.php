@@ -119,6 +119,11 @@ class Card_Vault_Catalog_DB {
 			mid_price decimal(10,2) DEFAULT 0.00,
 			high_price decimal(10,2) DEFAULT 0.00,
 			direct_low_price decimal(10,2) DEFAULT NULL,
+			psa9_price decimal(10,2) DEFAULT 0.00,
+			psa10_price decimal(10,2) DEFAULT 0.00,
+			bgs95_price decimal(10,2) DEFAULT 0.00,
+			cgc10_price decimal(10,2) DEFAULT 0.00,
+			pricing_source varchar(50) DEFAULT 'tcgcsv',
 			updated_at bigint(20) NOT NULL,
 			image_url text DEFAULT NULL,
 			tcgplayer_url text DEFAULT NULL,
@@ -153,20 +158,14 @@ class Card_Vault_Catalog_DB {
 		if ( empty( $existing_indexes ) ) {
 			$wpdb->query( "ALTER TABLE {$cards_table} ADD FULLTEXT KEY ft_card_search (name, clean_name, group_name)" );
 		}
+
+		// 1b. Schema column migration check for existing MySQL databases
+		self::migrate_cards_columns();
+
+		// 1c. Initialize Price History Time-Series Table in MySQL
+		Card_Vault_Price_History::ensure_table();
 	}
 
-	/**
-	 * Two-Stage Smart Search Query Resolver in MySQL.
-	 *
-	 * Executes deterministic B-Tree lookups for slash numbers (e.g. 199/165)
-	 * and FULLTEXT boolean searches with LIKE fallback for text keywords.
-	 *
-	 * @param string $query User search string.
-	 * @param array  $filters Optional filters (category_id, group_id, rarity).
-	 * @param int    $limit Max results (default: 25).
-	 * @param int    $offset Result offset for pagination (default: 0).
-	 * @return array List of matched cards.
-	 */
 	/**
 	 * Normalize card record fields before returning to caller.
 	 * Upgrades TCGPlayer 200w thumbnail URLs to 1000w high-resolution.
@@ -538,12 +537,21 @@ class Card_Vault_Catalog_DB {
 			'raw_number', 'clean_number', 'numeric_number', 'number_prefix', 'total_set_number', 'number_variants',
 			'rarity', 'card_type', 'stage_or_subtype', 'hp', 'card_text', 'upc',
 			'market_price', 'low_price', 'mid_price', 'high_price', 'direct_low_price',
+			'psa9_price', 'psa10_price', 'bgs95_price', 'cgc10_price', 'pricing_source',
 			'updated_at', 'image_url', 'tcgplayer_url',
 		);
 
 		$col_list       = implode( ', ', $columns );
 		$update_clauses = array();
-		foreach ( array( 'category_name', 'group_name', 'name', 'clean_name', 'sub_type_name', 'raw_number', 'clean_number', 'numeric_number', 'number_prefix', 'total_set_number', 'number_variants', 'rarity', 'card_type', 'stage_or_subtype', 'hp', 'card_text', 'upc', 'market_price', 'low_price', 'mid_price', 'high_price', 'direct_low_price', 'updated_at', 'image_url', 'tcgplayer_url' ) as $up_col ) {
+		$up_columns     = array(
+			'category_name', 'group_name', 'name', 'clean_name', 'sub_type_name',
+			'raw_number', 'clean_number', 'numeric_number', 'number_prefix', 'total_set_number', 'number_variants',
+			'rarity', 'card_type', 'stage_or_subtype', 'hp', 'card_text', 'upc',
+			'market_price', 'low_price', 'mid_price', 'high_price', 'direct_low_price',
+			'psa9_price', 'psa10_price', 'bgs95_price', 'cgc10_price', 'pricing_source',
+			'updated_at', 'image_url', 'tcgplayer_url',
+		);
+		foreach ( $up_columns as $up_col ) {
 			$update_clauses[] = "{$up_col} = VALUES({$up_col})";
 		}
 		$update_str     = implode( ', ', $update_clauses );
@@ -570,7 +578,182 @@ class Card_Vault_Catalog_DB {
 	}
 
 	/**
-	 * Get subsite database diagnostics and metrics.
+	 * Retrieve pricing for multiple cards in a single batch query via MySQL.
+	 *
+	 * @param array $card_identifiers List of card IDs or tcgplayer_ids.
+	 * @return array Map of card_id => CardPricing envelope.
+	 */
+	public static function get_cards_pricing_batch( array $card_identifiers ): array {
+		global $wpdb;
+		if ( empty( $card_identifiers ) ) {
+			return array();
+		}
+
+		$table   = self::get_table_name();
+		$results = array();
+
+		$string_ids    = array();
+		$tcgplayer_ids = array();
+
+		foreach ( $card_identifiers as $identifier ) {
+			$trimmed = trim( (string) $identifier );
+			if ( empty( $trimmed ) ) {
+				continue;
+			}
+			$string_ids[] = $trimmed;
+			if ( ctype_digit( $trimmed ) ) {
+				$tcgplayer_ids[] = (int) $trimmed;
+			}
+		}
+
+		// 1. Query by string card IDs in chunks of 100
+		if ( ! empty( $string_ids ) ) {
+			$string_ids = array_values( array_unique( $string_ids ) );
+			$chunks     = array_chunk( $string_ids, 100 );
+			foreach ( $chunks as $chunk ) {
+				$placeholders = implode( ',', array_fill( 0, count( $chunk ), '%s' ) );
+				$query        = $wpdb->prepare(
+					"SELECT id, tcgplayer_id, name, market_price, low_price, mid_price, high_price, direct_low_price, psa10_price, psa9_price, bgs95_price, cgc10_price, pricing_source, updated_at
+					 FROM {$table}
+					 WHERE id IN ({$placeholders})",
+					$chunk
+				);
+				$rows         = $wpdb->get_results( $query, ARRAY_A );
+				if ( ! empty( $rows ) ) {
+					foreach ( $rows as $row ) {
+						$pricing = array(
+							'id'             => $row['id'],
+							'tcgplayerId'    => (int) $row['tcgplayer_id'],
+							'rawMarketPrice' => (float) $row['market_price'],
+							'rawLowPrice'    => (float) $row['low_price'],
+							'rawMidPrice'    => (float) $row['mid_price'],
+							'rawHighPrice'   => (float) $row['high_price'],
+							'directLowPrice' => isset( $row['direct_low_price'] ) ? (float) $row['direct_low_price'] : null,
+							'psa10Price'     => (float) $row['psa10_price'],
+							'psa9Price'      => (float) $row['psa9_price'],
+							'bgs95Price'     => (float) $row['bgs95_price'],
+							'cgc10Price'     => (float) $row['cgc10_price'],
+							'pricingSource'  => $row['pricing_source'] ?? 'tcgcsv',
+							'psa8Price'      => round( (float) $row['market_price'] * 0.90, 2 ),
+							'psa7Price'      => round( (float) $row['market_price'] * 0.72, 2 ),
+							'lastUpdated'    => ! empty( $row['updated_at'] ) ? date( 'Y-m-d', (int) $row['updated_at'] ) : gmdate( 'Y-m-d' ),
+						);
+						$results[ $row['id'] ]                    = $pricing;
+						$results[ (string) $row['tcgplayer_id'] ] = $pricing;
+					}
+				}
+			}
+		}
+
+		// 2. Query by numeric tcgplayer_ids for missing items
+		if ( ! empty( $tcgplayer_ids ) ) {
+			$missing_tcgplayer_ids = array();
+			foreach ( $tcgplayer_ids as $tid ) {
+				if ( ! isset( $results[ (string) $tid ] ) ) {
+					$missing_tcgplayer_ids[] = $tid;
+				}
+			}
+
+			if ( ! empty( $missing_tcgplayer_ids ) ) {
+				$missing_tcgplayer_ids = array_values( array_unique( $missing_tcgplayer_ids ) );
+				$chunks                = array_chunk( $missing_tcgplayer_ids, 100 );
+				foreach ( $chunks as $chunk ) {
+					$placeholders = implode( ',', array_fill( 0, count( $chunk ), '%d' ) );
+					$query        = $wpdb->prepare(
+						"SELECT id, tcgplayer_id, name, market_price, low_price, mid_price, high_price, direct_low_price, psa10_price, psa9_price, bgs95_price, cgc10_price, pricing_source, updated_at
+						 FROM {$table}
+						 WHERE tcgplayer_id IN ({$placeholders})",
+						$chunk
+					);
+					$rows         = $wpdb->get_results( $query, ARRAY_A );
+					if ( ! empty( $rows ) ) {
+						foreach ( $rows as $row ) {
+							$pricing = array(
+								'id'             => $row['id'],
+								'tcgplayerId'    => (int) $row['tcgplayer_id'],
+								'rawMarketPrice' => (float) $row['market_price'],
+								'rawLowPrice'    => (float) $row['low_price'],
+								'rawMidPrice'    => (float) $row['mid_price'],
+								'rawHighPrice'   => (float) $row['high_price'],
+								'directLowPrice' => isset( $row['direct_low_price'] ) ? (float) $row['direct_low_price'] : null,
+								'psa10Price'     => (float) $row['psa10_price'],
+								'psa9Price'      => (float) $row['psa9_price'],
+								'bgs95Price'     => (float) $row['bgs95_price'],
+								'cgc10Price'     => (float) $row['cgc10_price'],
+								'pricingSource'  => $row['pricing_source'] ?? 'tcgcsv',
+								'psa8Price'      => round( (float) $row['market_price'] * 0.90, 2 ),
+								'psa7Price'      => round( (float) $row['market_price'] * 0.72, 2 ),
+								'lastUpdated'    => ! empty( $row['updated_at'] ) ? date( 'Y-m-d', (int) $row['updated_at'] ) : gmdate( 'Y-m-d' ),
+							);
+							if ( ! isset( $results[ $row['id'] ] ) ) {
+								$results[ $row['id'] ] = $pricing;
+							}
+							$results[ (string) $row['tcgplayer_id'] ] = $pricing;
+						}
+					}
+				}
+			}
+		}
+
+		return $results;
+	}
+
+	/**
+	 * Run column migrations on existing MySQL cards table if upgrading from earlier schema.
+	 */
+	public static function migrate_cards_columns(): void {
+		global $wpdb;
+		$table = self::get_table_name();
+
+		$table_exists = $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $table ) );
+		if ( $table_exists !== $table ) {
+			return;
+		}
+
+		$existing_columns = $wpdb->get_col( "SHOW COLUMNS FROM {$table}" );
+		if ( empty( $existing_columns ) ) {
+			return;
+		}
+
+		$new_cols = array(
+			'psa9_price'     => 'decimal(10,2) DEFAULT 0.00 AFTER direct_low_price',
+			'psa10_price'    => 'decimal(10,2) DEFAULT 0.00 AFTER psa9_price',
+			'bgs95_price'    => 'decimal(10,2) DEFAULT 0.00 AFTER psa10_price',
+			'cgc10_price'    => 'decimal(10,2) DEFAULT 0.00 AFTER bgs95_price',
+			'pricing_source' => "varchar(50) DEFAULT 'tcgcsv' AFTER cgc10_price",
+		);
+
+		foreach ( $new_cols as $col_name => $col_def ) {
+			if ( ! in_array( $col_name, $existing_columns, true ) ) {
+				$wpdb->query( "ALTER TABLE {$table} ADD COLUMN {$col_name} {$col_def}" );
+			}
+		}
+	}
+
+	/**
+	 * Retrieve chronological price history for a card.
+	 *
+	 * @param string $card_id Card identifier.
+	 * @param int    $days    Number of days of history.
+	 * @return array
+	 */
+	public static function get_card_price_history( string $card_id, int $days = 30 ): array {
+		return Card_Vault_Price_History::get_card_history( $card_id, $days );
+	}
+
+	/**
+	 * Retrieve portfolio valuation history across multiple cards.
+	 *
+	 * @param array $items List of inventory items with card_id, quantity, condition, acquired_price.
+	 * @param int   $days  Number of days of history.
+	 * @return array List of PerformancePoints.
+	 */
+	public static function get_portfolio_history( array $items, int $days = 30 ): array {
+		return Card_Vault_Price_History::get_portfolio_history( $items, $days );
+	}
+
+	/**
+	 * Get database diagnostics and metrics.
 	 *
 	 * @return array Database status details.
 	 */
