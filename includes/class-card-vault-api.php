@@ -220,7 +220,16 @@ class Card_Vault_API {
 			'permission_callback' => '__return_true',
 		) );
 
+		// 15b. Floor Rep & Partner Referral Summary
+		register_rest_route( self::NAMESPACE, '/referrals/summary', array(
+			'methods'             => WP_REST_Server::READABLE,
+			'callback'            => array( $this, 'handle_referral_summary' ),
+			'permission_callback' => '__return_true',
+		) );
+
 		// 16. Dedicated Authentication Endpoints (Bypasses wp-login.php Turnstile)
+		add_filter( 'rest_authentication_errors', array( $this, 'bypass_cookie_check_for_auth' ), 999 );
+
 		register_rest_route( self::NAMESPACE, '/auth/login', array(
 			'methods'             => WP_REST_Server::CREATABLE,
 			'callback'            => array( $this, 'handle_auth_login' ),
@@ -1113,10 +1122,11 @@ class Card_Vault_API {
 	 * @return WP_REST_Response|WP_Error
 	 */
 	public function handle_license_checkout( $request ) {
-		$params  = $request->get_json_params() ?: array();
-		$tier    = sanitize_key( $params['tier'] ?? 'single' );
-		$billing = sanitize_key( $params['billing'] ?? 'annual' );
-		$return_url = ! empty( $params['return_url'] ) ? esc_url_raw( $params['return_url'] ) : '';
+		$params        = $request->get_json_params() ?: array();
+		$tier          = sanitize_key( $params['tier'] ?? 'single' );
+		$billing       = sanitize_key( $params['billing'] ?? 'annual' );
+		$return_url    = ! empty( $params['return_url'] ) ? esc_url_raw( $params['return_url'] ) : '';
+		$referral_code = ! empty( $params['referral_code'] ) ? sanitize_text_field( $params['referral_code'] ) : '';
 
 		$trial_days = 0;
 		if ( $billing === 'annual' ) {
@@ -1129,11 +1139,36 @@ class Card_Vault_API {
 			}
 		}
 
+		$referrer_id = 0;
+		if ( ! empty( $referral_code ) ) {
+			$ref_user = get_user_by( 'login', $referral_code );
+			if ( ! $ref_user && is_numeric( $referral_code ) ) {
+				$ref_user = get_user_by( 'id', (int) $referral_code );
+			}
+			if ( ! $ref_user ) {
+				$ref_user = get_user_by( 'slug', sanitize_title( $referral_code ) );
+			}
+			if ( $ref_user ) {
+				$referrer_id = (int) $ref_user->ID;
+			}
+		}
+
+		$commission_rate = 20.0;
+		if ( $referrer_id > 0 ) {
+			$user_rate = get_user_meta( $referrer_id, 'cv_commission_rate', true );
+			if ( is_numeric( $user_rate ) && (float) $user_rate > 0 ) {
+				$commission_rate = (float) $user_rate;
+			}
+		}
+
 		$target_slug  = "card-vault/{$tier}-{$billing}";
 		$query_params = array(
-			'billing'    => $billing,
-			'return_url' => $return_url,
-			'trial_days' => $trial_days,
+			'billing'         => $billing,
+			'return_url'      => $return_url,
+			'trial_days'      => $trial_days,
+			'referral_code'   => $referral_code,
+			'referrer_id'     => $referrer_id,
+			'commission_rate' => $commission_rate,
 		);
 
 		if ( class_exists( 'Xophz_Bazaar_Checkout_Service' ) ) {
@@ -1159,6 +1194,9 @@ class Card_Vault_API {
 		if ( ! empty( $return_url ) ) {
 			$fallback_url = add_query_arg( 'return_url', rawurlencode( $return_url ), $fallback_url );
 		}
+		if ( ! empty( $referral_code ) ) {
+			$fallback_url = add_query_arg( 'ref', urlencode( $referral_code ), $fallback_url );
+		}
 
 		return new WP_REST_Response( array(
 			'success' => true,
@@ -1168,6 +1206,114 @@ class Card_Vault_API {
 				'checkout_url' => $fallback_url,
 			),
 		), 200 );
+	}
+
+	/**
+	 * Retrieve current user's referral summary and link.
+	 *
+	 * @param WP_REST_Request $request Request.
+	 * @return WP_REST_Response
+	 */
+	public function handle_referral_summary( $request ) {
+		$user    = wp_get_current_user();
+		$user_id = ( $user && $user->ID ) ? (int) $user->ID : 0;
+
+		$custom_slug = get_option( 'xophz_compass_card_vault_custom_slug', 'card-vault' );
+		$app_url     = home_url( '/' . $custom_slug );
+
+		if ( ! $user_id ) {
+			return new WP_REST_Response( array(
+				'success' => true,
+				'data'    => array(
+					'referralCode'        => '',
+					'referralUrl'         => $app_url,
+					'conversionsCount'    => 0,
+					'netCommissionEarned' => 0.00,
+					'commissionRate'      => 20.0,
+				),
+			), 200 );
+		}
+
+		$referral_code = $user->user_login;
+		$referral_url  = add_query_arg( array(
+			'showcase' => $user->user_login,
+			'ref'      => $user->user_login,
+		), $app_url );
+
+		$commission_rate = (float) get_user_meta( $user_id, 'cv_commission_rate', true ) ?: 20.0;
+		$conversions     = (int) get_user_meta( $user_id, 'cv_referral_conversions_count', true ) ?: 0;
+		$net_earned      = (float) get_user_meta( $user_id, 'cv_referral_net_earned', true ) ?: 0.00;
+
+		// Check Bazaar ad-hoc ledger for attributed sessions matching this user
+		$ledger = get_option( '_xophz_bazaar_adhoc_ledger', array() );
+		if ( is_array( $ledger ) && ! empty( $ledger ) ) {
+			$ledger_conversions = 0;
+			$ledger_earned      = 0.00;
+			foreach ( $ledger as $entry ) {
+				$meta           = $entry['metadata'] ?? array();
+				$entry_ref_id   = isset( $meta['referrer_id'] ) ? (int) $meta['referrer_id'] : 0;
+				$entry_ref_code = isset( $meta['referral_code'] ) ? (string) $meta['referral_code'] : '';
+
+				if ( $entry_ref_id === $user_id || ( ! empty( $entry_ref_code ) && strtolower( $entry_ref_code ) === strtolower( $referral_code ) ) ) {
+					$ledger_conversions++;
+					$paid_amount = isset( $entry['amount'] ) ? (float) $entry['amount'] : 0.0;
+					$rate        = isset( $meta['commission_rate'] ) ? (float) $meta['commission_rate'] : $commission_rate;
+					$ledger_earned += round( $paid_amount * ( $rate / 100.0 ), 2 );
+				}
+			}
+			if ( $ledger_conversions > $conversions ) {
+				$conversions = $ledger_conversions;
+			}
+			if ( $ledger_earned > $net_earned ) {
+				$net_earned = $ledger_earned;
+			}
+		}
+
+		return new WP_REST_Response( array(
+			'success' => true,
+			'data'    => array(
+				'referralCode'        => $referral_code,
+				'referralUrl'         => $referral_url,
+				'conversionsCount'    => $conversions,
+				'netCommissionEarned' => $net_earned,
+				'commissionRate'      => $commission_rate,
+			),
+		), 200 );
+	}
+
+	/**
+	 * Bypass cookie check errors for authentication routes.
+	 *
+	 * When unauthenticated users or users with expired nonces attempt to access
+	 * /auth/login or /auth/me, WordPress core's rest_cookie_check_errors returns
+	 * a 403 rest_cookie_invalid_nonce ("Cookie check failed") WP_Error.
+	 * Clearing the error allows /auth/login to verify credentials via username/password
+	 * and allows /auth/me to return a guest session with a fresh nonce.
+	 *
+	 * @param WP_Error|null|bool $error Error from prior authentication filters.
+	 * @return WP_Error|null|bool
+	 */
+	public function bypass_cookie_check_for_auth( $error ) {
+		$rest_route = isset( $GLOBALS['wp']->query_vars['rest_route'] ) ? (string) $GLOBALS['wp']->query_vars['rest_route'] : '';
+		if ( empty( $rest_route ) && isset( $_GET['rest_route'] ) ) {
+			$rest_route = (string) $_GET['rest_route'];
+		}
+		if ( empty( $rest_route ) && isset( $_SERVER['REQUEST_URI'] ) ) {
+			$rest_route = (string) $_SERVER['REQUEST_URI'];
+		}
+
+		$is_login_route = strpos( $rest_route, '/' . self::NAMESPACE . '/auth/login' ) !== false;
+		$is_auth_route  = strpos( $rest_route, '/' . self::NAMESPACE . '/auth/' ) !== false;
+
+		if ( $is_login_route ) {
+			return null;
+		}
+
+		if ( $is_auth_route && is_wp_error( $error ) && $error->get_error_code() === 'rest_cookie_invalid_nonce' ) {
+			return null;
+		}
+
+		return $error;
 	}
 
 	/**

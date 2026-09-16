@@ -3,6 +3,17 @@
 All notable changes to this WordPress plugin submodule will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [2026-09-15]
+
+### Added
+- **Referral Summary REST Endpoint (`includes/class-card-vault-api.php`)**: Registered `GET /referrals/summary` returning active authenticated user's referral code, share URL, total attributed conversions, and net commission earnings derived from the Bazaar transaction ledger and user metadata.
+
+### Changed
+- **License Checkout Referral Attribution (`includes/class-card-vault-api.php`)**: Updated `handle_license_checkout` to parse `referral_code`, resolve the referring WordPress user ID, determine active commission rate (default 20%), and forward attribution metadata into Stripe session payloads and fallback query strings.
+
+### Fixed
+- **Authentication 403 Cookie Check Bypass (`includes/class-card-vault-api.php`)**: Added `bypass_cookie_check_for_auth` filter on `rest_authentication_errors` (priority 999). Bypasses WordPress core's `rest_cookie_invalid_nonce` ("Cookie check failed") error on `/auth/login`, `/auth/me`, and `/auth/logout` endpoints when visitors or clients submit credentials with stale cookies or expired nonces, allowing credentials to be evaluated directly.
+
 ## [2026-09-14]
 
 ### Added
