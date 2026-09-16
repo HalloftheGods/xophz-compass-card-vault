@@ -1,1 +1,0 @@
-import{Kn as e,Sr as t,wr as n,yr as r}from"./createLucideIcon-BXxp8Qvi.js";function i(){let i=t(!1);return e(()=>{window.requestAnimationFrame(()=>{i.value=!0})}),{ssrBootStyles:n(()=>i.value?void 0:{transition:`none !important`}),isBooted:r(i)}}export{i as t};
