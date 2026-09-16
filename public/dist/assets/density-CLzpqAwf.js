@@ -1,0 +1,1 @@
+import{F as e,an as t,vr as n}from"./createLucideIcon-BnDoItrM.js";var r=[null,`default`,`comfortable`,`compact`],i=t({density:{type:String,default:`default`,validator:e=>r.includes(e)}},`density`);function a(t){let r=arguments.length>1&&arguments[1]!==void 0?arguments[1]:e();return{densityClasses:n(()=>`${r}--density-${t.density}`)}}export{a as n,i as t};
