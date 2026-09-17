@@ -10,6 +10,16 @@ if ( ! defined( 'WPINC' ) ) {
 	die;
 }
 
+if ( ! defined( 'XOPHZ_COMPASS_CARD_VAULT_PATH' ) ) {
+	define( 'XOPHZ_COMPASS_CARD_VAULT_PATH', dirname( __DIR__ ) . '/' );
+}
+if ( ! defined( 'XOPHZ_COMPASS_CARD_VAULT_URL' ) ) {
+	define( 'XOPHZ_COMPASS_CARD_VAULT_URL', function_exists( 'plugins_url' ) ? plugins_url( '', dirname( __DIR__ ) . '/xophz-compass-card-vault.php' ) : 'http://localhost/wp-content/plugins/xophz-compass-card-vault/' );
+}
+if ( ! defined( 'XOPHZ_COMPASS_CARD_VAULT_VERSION' ) ) {
+	define( 'XOPHZ_COMPASS_CARD_VAULT_VERSION', '26.9.17' );
+}
+
 class Card_Vault_Public {
 
 	/**
@@ -46,6 +56,8 @@ class Card_Vault_Public {
 
 			add_filter( 'xophz_compass_dev_proxy_card-vault_api_settings', array( $this, 'filter_api_settings' ), 10, 2 );
 			add_filter( 'xophz_compass_dev_proxy_settings', array( $this, 'filter_api_settings' ), 10, 2 );
+			add_filter( 'xophz_compass_dev_proxy_card-vault_html', array( $this, 'filter_html_output' ), 10, 2 );
+			add_filter( 'xophz_compass_dev_proxy_html', array( $this, 'filter_html_output' ), 10, 2 );
 		}
 	}
 
@@ -68,6 +80,57 @@ class Card_Vault_Public {
 	}
 
 	/**
+	 * Injects dynamic WordPress site title and application metadata into served HTML.
+	 *
+	 * @param string $html Output HTML string.
+	 * @param string $slug Plugin slug identifier.
+	 * @return string
+	 */
+	public function filter_html_output( string $html, string $slug = '' ): string {
+		if ( ! empty( $slug ) && 'card-vault' !== $slug ) {
+			return $html;
+		}
+
+		$raw_title  = function_exists( 'get_bloginfo' ) ? get_bloginfo( 'name' ) : '';
+		$site_title = function_exists( 'wp_specialchars_decode' )
+			? wp_specialchars_decode( $raw_title, ENT_QUOTES )
+			: htmlspecialchars_decode( (string) $raw_title, ENT_QUOTES );
+		if ( empty( $site_title ) ) {
+			$site_title = 'My Card Vault';
+		}
+
+		$escaped_title = function_exists( 'esc_html' ) ? esc_html( $site_title ) : htmlspecialchars( $site_title, ENT_QUOTES, 'UTF-8' );
+		$attr_title    = function_exists( 'esc_attr' ) ? esc_attr( $site_title ) : htmlspecialchars( $site_title, ENT_QUOTES, 'UTF-8' );
+
+		// 1. Replace <title> tag with dynamic site title
+		if ( preg_match( '#<title>.*?</title>#is', $html ) ) {
+			$html = preg_replace( '#<title>.*?</title>#is', '<title>' . $escaped_title . '</title>', $html, 1 );
+		}
+
+		// 2. Dynamically replace application-name meta tag
+		if ( preg_match( '#<meta\s+name=["\']application-name["\']\s+content=["\'][^"\']*["\']#is', $html ) ) {
+			$html = preg_replace(
+				'#<meta\s+name=["\']application-name["\']\s+content=["\'][^"\']*["\']#is',
+				'<meta name="application-name" content="' . $attr_title . '"',
+				$html,
+				1
+			);
+		}
+
+		// 3. Dynamically replace apple-mobile-web-app-title meta tag
+		if ( preg_match( '#<meta\s+name=["\']apple-mobile-web-app-title["\']\s+content=["\'][^"\']*["\']#is', $html ) ) {
+			$html = preg_replace(
+				'#<meta\s+name=["\']apple-mobile-web-app-title["\']\s+content=["\'][^"\']*["\']#is',
+				'<meta name="apple-mobile-web-app-title" content="' . $attr_title . '"',
+				$html,
+				1
+			);
+		}
+
+		return $html;
+	}
+
+	/**
 	 * Injects Card Vault specific role and consignor metadata into window.wpApiSettings.
 	 *
 	 * @param array  $payload Current API settings.
@@ -79,6 +142,12 @@ class Card_Vault_Public {
 			return $payload;
 		}
 
+		$raw_title  = function_exists( 'get_bloginfo' ) ? get_bloginfo( 'name' ) : '';
+		$site_title = function_exists( 'wp_specialchars_decode' )
+			? wp_specialchars_decode( $raw_title, ENT_QUOTES )
+			: htmlspecialchars_decode( (string) $raw_title, ENT_QUOTES );
+
+		$payload['siteTitle']     = ! empty( $site_title ) ? $site_title : 'My Card Vault';
 		$payload['version']       = defined( 'XOPHZ_COMPASS_CARD_VAULT_VERSION' ) ? XOPHZ_COMPASS_CARD_VAULT_VERSION : '26.9.12-1209';
 		$payload['versionString'] = defined( 'XOPHZ_COMPASS_CARD_VAULT_VERSION' ) ? XOPHZ_COMPASS_CARD_VAULT_VERSION : '26.9.12-1209';
 

@@ -23,92 +23,279 @@
 
     <!-- Slab Acrylic Border Gradient -->
     <linearGradient id="slabBorder" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="rgba(255, 255, 255, 0.45)"/>
-      <stop offset="50%" stop-color="rgba(98, 201, 255, 0.3)"/>
-      <stop offset="100%" stop-color="rgba(255, 255, 255, 0.1)"/>
+      <stop offset="0%" stop-color="rgba(255, 255, 255, 0.55)"/>
+      <stop offset="50%" stop-color="rgba(98, 201, 255, 0.4)"/>
+      <stop offset="100%" stop-color="rgba(255, 255, 255, 0.15)"/>
     </linearGradient>
 
     <!-- Acrylic Glass Fill -->
     <linearGradient id="slabGlass" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="rgba(30, 41, 59, 0.85)"/>
-      <stop offset="100%" stop-color="rgba(15, 23, 42, 0.95)"/>
+      <stop offset="0%" stop-color="rgba(30, 41, 59, 0.9)"/>
+      <stop offset="100%" stop-color="rgba(15, 23, 42, 0.98)"/>
     </linearGradient>
 
     <!-- Holographic Card Art Gradient -->
     <linearGradient id="holoArt" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#0d1b2a"/>
-      <stop offset="40%" stop-color="#1b263b"/>
-      <stop offset="100%" stop-color="#0d2b45"/>
+      <stop offset="0%" stop-color="#091428"/>
+      <stop offset="45%" stop-color="#112240"/>
+      <stop offset="100%" stop-color="#0a192f"/>
     </linearGradient>
 
-    <!-- Filter for Glow -->
+    <!-- Holo Sheen Sweeper Gradient -->
+    <linearGradient id="holoSheenGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="rgba(255, 255, 255, 0)"/>
+      <stop offset="35%" stop-color="rgba(98, 201, 255, 0.15)"/>
+      <stop offset="50%" stop-color="rgba(255, 255, 255, 0.45)"/>
+      <stop offset="65%" stop-color="rgba(255, 213, 79, 0.25)"/>
+      <stop offset="100%" stop-color="rgba(255, 255, 255, 0)"/>
+    </linearGradient>
+
+    <!-- Filter for Core Glow -->
     <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
       <feGaussianBlur stdDeviation="8" result="blur" />
       <feComposite in="SourceGraphic" in2="blur" operator="over" />
     </filter>
+
+    <filter id="subtleGlow" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="4" result="blur" />
+      <feComposite in="SourceGraphic" in2="blur" operator="over" />
+    </filter>
+
+    <!-- Card Clip Path for Sheen -->
+    <clipPath id="cardClip">
+      <rect x="18" y="94" width="204" height="248" rx="10"/>
+    </clipPath>
+
+    <!-- Slab Outer Clip for Specular Sweep -->
+    <clipPath id="slabClip">
+      <rect x="0" y="0" width="240" height="360" rx="20"/>
+    </clipPath>
+
+    <style>
+      /* Rotating Ambient Orbit Ring */
+      .cv-orbit-ring {
+        transform-origin: 256px 256px;
+        animation: cv-spin 32s linear infinite;
+      }
+      .cv-orbit-ring-reverse {
+        transform-origin: 256px 256px;
+        animation: cv-spin-rev 48s linear infinite;
+      }
+
+      /* Holographic Glint Across Trading Card */
+      .cv-holo-glint {
+        animation: cv-sweep 4.5s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+      }
+
+      /* Specular Sheen Across Whole Slab */
+      .cv-slab-specular {
+        animation: cv-sweep 4.5s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+        animation-delay: 0.15s;
+      }
+
+      /* Core Vault Crest Luminescent Breathing */
+      .cv-vault-crest {
+        animation: cv-pulse 3s ease-in-out infinite;
+      }
+
+      /* Sparkles Staggered Glimmer */
+      .cv-sparkle-1 {
+        transform-origin: 120px 147px;
+        animation: cv-twinkle 2.8s ease-in-out infinite;
+      }
+      .cv-sparkle-2 {
+        transform-origin: 158px 245px;
+        animation: cv-twinkle 2.8s ease-in-out infinite;
+        animation-delay: 0.9s;
+      }
+      .cv-sparkle-3 {
+        transform-origin: 82px 245px;
+        animation: cv-twinkle 2.8s ease-in-out infinite;
+        animation-delay: 1.8s;
+      }
+
+      /* Gold Grade Badge Shimmer */
+      .cv-grade-badge {
+        animation: cv-badge-glint 4.5s ease-in-out infinite;
+      }
+
+      @keyframes cv-spin {
+        from { transform: rotate(0deg); }
+        to { transform: rotate(360deg); }
+      }
+
+      @keyframes cv-spin-rev {
+        from { transform: rotate(360deg); }
+        to { transform: rotate(0deg); }
+      }
+
+      @keyframes cv-sweep {
+        0% {
+          transform: translate(-220px, -220px) rotate(-15deg);
+          opacity: 0;
+        }
+        15% {
+          opacity: 1;
+        }
+        55% {
+          transform: translate(320px, 320px) rotate(-15deg);
+          opacity: 1;
+        }
+        70%, 100% {
+          transform: translate(320px, 320px) rotate(-15deg);
+          opacity: 0;
+        }
+      }
+
+      @keyframes cv-pulse {
+        0%, 100% {
+          filter: drop-shadow(0 0 4px rgba(98, 201, 255, 0.5));
+          opacity: 0.92;
+        }
+        50% {
+          filter: drop-shadow(0 0 12px rgba(98, 201, 255, 0.95)) drop-shadow(0 0 20px rgba(255, 213, 79, 0.6));
+          opacity: 1;
+        }
+      }
+
+      @keyframes cv-twinkle {
+        0%, 100% {
+          transform: scale(0.65) rotate(0deg);
+          opacity: 0.35;
+        }
+        50% {
+          transform: scale(1.35) rotate(45deg);
+          opacity: 1;
+          filter: drop-shadow(0 0 6px #ffd54f);
+        }
+      }
+
+      @keyframes cv-badge-glint {
+        0%, 100% {
+          stroke: #ffd54f;
+          stroke-width: 1.5;
+        }
+        40%, 60% {
+          stroke: #ffffff;
+          stroke-width: 2.2;
+          filter: drop-shadow(0 0 8px rgba(255, 241, 118, 0.8));
+        }
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        .cv-orbit-ring,
+        .cv-orbit-ring-reverse,
+        .cv-holo-glint,
+        .cv-slab-specular,
+        .cv-vault-crest,
+        .cv-sparkle-1,
+        .cv-sparkle-2,
+        .cv-sparkle-3,
+        .cv-grade-badge {
+          animation: none !important;
+        }
+      }
+    </style>
   </defs>
 
   <!-- Outer Starship Base Circle -->
-  <circle cx="256" cy="256" r="240" fill="url(#bgGrad)" stroke="url(#cyanGlow)" stroke-width="6" stroke-opacity="0.6"/>
-  <!-- Ambient Inner Orbit Ring -->
-  <circle cx="256" cy="256" r="226" fill="none" stroke="#62c9ff" stroke-width="1.5" stroke-dasharray="8 6" stroke-opacity="0.3"/>
+  <circle cx="256" cy="256" r="240" fill="url(#bgGrad)" stroke="url(#cyanGlow)" stroke-width="6" stroke-opacity="0.8" filter="url(#subtleGlow)"/>
 
-  <!-- Back Card Shadow / Offset Stack (Layered depth) -->
-  <rect x="180" y="80" width="200" height="310" rx="18" transform="rotate(12 280 235)" fill="#0f172a" stroke="url(#cyanGlow)" stroke-width="2" stroke-opacity="0.35" opacity="0.6"/>
+  <!-- Outer Ambient Counter-Orbit Ring -->
+  <circle class="cv-orbit-ring-reverse" cx="256" cy="256" r="232" fill="none" stroke="#0091ea" stroke-width="1" stroke-dasharray="4 12" stroke-opacity="0.4"/>
+
+  <!-- Ambient Inner Orbit Ring -->
+  <circle class="cv-orbit-ring" cx="256" cy="256" r="222" fill="none" stroke="#62c9ff" stroke-width="2" stroke-dasharray="10 8" stroke-opacity="0.45"/>
+
+  <!-- Orbit Cardinal Nodes -->
+  <g class="cv-orbit-ring">
+    <circle cx="256" cy="34" r="3" fill="#62c9ff" opacity="0.8"/>
+    <circle cx="256" cy="478" r="3" fill="#62c9ff" opacity="0.8"/>
+    <circle cx="34" cy="256" r="3" fill="#62c9ff" opacity="0.8"/>
+    <circle cx="478" cy="256" r="3" fill="#62c9ff" opacity="0.8"/>
+  </g>
+
+  <!-- Back Card Shadow / Offset Stack (Layered holographic depth) -->
+  <rect x="180" y="80" width="200" height="310" rx="18" transform="rotate(12 280 235)" fill="#0d1b2a" stroke="url(#cyanGlow)" stroke-width="2" stroke-opacity="0.4" opacity="0.7"/>
 
   <!-- Main Foreground Graded Slab -->
-  <g transform="translate(136, 76)">
+  <g id="mainSlab" transform="translate(136, 76)">
     <!-- Slab Outer Shell (Thick Acrylic Capsule) -->
     <rect x="0" y="0" width="240" height="360" rx="20" fill="url(#slabGlass)" stroke="url(#slabBorder)" stroke-width="4" filter="url(#glow)"/>
+    
     <!-- Inner Bevel -->
-    <rect x="8" y="8" width="224" height="344" rx="14" fill="none" stroke="rgba(255,255,255,0.12)" stroke-width="1.5"/>
+    <rect x="8" y="8" width="224" height="344" rx="14" fill="none" stroke="rgba(255,255,255,0.18)" stroke-width="1.5"/>
 
     <!-- Slab Header: Grading Label (PSA / BGS Style) -->
-    <rect x="18" y="18" width="204" height="64" rx="8" fill="#111827" stroke="url(#goldGrad)" stroke-width="2"/>
+    <rect x="18" y="18" width="204" height="64" rx="8" fill="#0b0f19" stroke="url(#goldGrad)" stroke-width="2"/>
     <!-- Grade Header Bar -->
-    <rect x="18" y="18" width="204" height="14" rx="6" fill="url(#goldGrad)"/>
-    <text x="120" y="29" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="8" font-weight="900" fill="#0b0f19" text-anchor="middle" letter-spacing="2">CARD VAULT ARCHIVE</text>
+    <rect x="18" y="18" width="204" height="15" rx="6" fill="url(#goldGrad)"/>
+    <text x="120" y="29" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'JetBrains Mono', sans-serif" font-size="8.5" font-weight="900" fill="#04070e" text-anchor="middle" letter-spacing="2">CARD VAULT ARCHIVE</text>
 
     <!-- Grade Label Details -->
-    <text x="26" y="50" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="9" font-weight="700" fill="#ffffff" opacity="0.95">DEALER TRADE DESK</text>
-    <text x="26" y="62" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="8" font-weight="500" fill="#62c9ff" opacity="0.85">OPTICAL GRADE GEM</text>
-    <text x="26" y="74" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="7" font-weight="400" fill="#94a3b8">#CV-2026-XOP</text>
+    <text x="26" y="50" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'JetBrains Mono', sans-serif" font-size="9" font-weight="700" fill="#ffffff" opacity="0.95">DEALER TRADE DESK</text>
+    <text x="26" y="62" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'JetBrains Mono', sans-serif" font-size="8" font-weight="500" fill="#62c9ff" opacity="0.9">OPTICAL GRADE GEM</text>
+    <text x="26" y="74" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'JetBrains Mono', sans-serif" font-size="7" font-weight="500" fill="#94a3b8">#CV-2026-XOP</text>
 
     <!-- Big Grade Badge: 10 -->
-    <rect x="174" y="36" width="40" height="38" rx="6" fill="#1e293b" stroke="url(#goldGrad)" stroke-width="1.5"/>
-    <text x="194" y="56" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="16" font-weight="900" fill="#ffd54f" text-anchor="middle">10</text>
-    <text x="194" y="68" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="7" font-weight="800" fill="#62c9ff" text-anchor="middle">PRISTINE</text>
+    <rect class="cv-grade-badge" x="174" y="36" width="40" height="38" rx="6" fill="#141e33" stroke="url(#goldGrad)" stroke-width="1.5"/>
+    <text x="194" y="56" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'JetBrains Mono', sans-serif" font-size="16" font-weight="900" fill="#ffd54f" text-anchor="middle">10</text>
+    <text x="194" y="68" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'JetBrains Mono', sans-serif" font-size="7" font-weight="800" fill="#62c9ff" text-anchor="middle">PRISTINE</text>
 
     <!-- Card Inset Window (Recessed Trading Card Bed) -->
-    <rect x="18" y="94" width="204" height="248" rx="10" fill="url(#holoArt)" stroke="rgba(98, 201, 255, 0.4)" stroke-width="2"/>
+    <rect x="18" y="94" width="204" height="248" rx="10" fill="url(#holoArt)" stroke="rgba(98, 201, 255, 0.5)" stroke-width="2"/>
 
     <!-- Inner Card Holo Frame -->
-    <rect x="26" y="102" width="188" height="232" rx="8" fill="none" stroke="rgba(255, 255, 255, 0.15)" stroke-width="1"/>
+    <rect x="26" y="102" width="188" height="232" rx="8" fill="none" stroke="rgba(255, 255, 255, 0.2)" stroke-width="1"/>
 
-    <!-- Card Art: Celestial Star & Holographic Shine -->
+    <!-- Card Art: Holographic Texture Lines -->
     <path d="M 30 110 L 190 270" stroke="rgba(255,255,255,0.08)" stroke-width="18" stroke-linecap="round"/>
-    <path d="M 60 110 L 200 250" stroke="rgba(98,201,255,0.12)" stroke-width="10" stroke-linecap="round"/>
+    <path d="M 60 110 L 200 250" stroke="rgba(98,201,255,0.14)" stroke-width="10" stroke-linecap="round"/>
+    <path d="M 20 180 L 160 320" stroke="rgba(255,213,79,0.09)" stroke-width="12" stroke-linecap="round"/>
 
-    <!-- Vault Crest: Shield & Keyhole Motif in Card Center -->
-    <g transform="translate(120, 205)">
+    <!-- Dynamic Holographic Sheen Sweep across Card -->
+    <g clip-path="url(#cardClip)">
+      <rect class="cv-holo-glint" x="-50" y="50" width="160" height="360" fill="url(#holoSheenGrad)"/>
+    </g>
+
+    <!-- Vault Crest: Shield & Dial Motif in Card Center -->
+    <g class="cv-vault-crest" transform="translate(120, 205)">
       <!-- Shield Outer -->
-      <path d="M 0 -44 L 38 -24 C 38 18 20 46 0 58 C -20 46 -38 18 -38 -24 Z" fill="#0f172a" stroke="url(#cyanGlow)" stroke-width="3"/>
+      <path d="M 0 -44 L 38 -24 C 38 18 20 46 0 58 C -20 46 -38 18 -38 -24 Z" fill="#080e1a" stroke="url(#cyanGlow)" stroke-width="3"/>
       <!-- Inner Shield Ring -->
-      <path d="M 0 -36 L 30 -20 C 30 14 16 36 0 46 C -16 36 -30 14 -30 -20 Z" fill="rgba(98, 201, 255, 0.15)" stroke="url(#goldGrad)" stroke-width="1.5"/>
+      <path d="M 0 -36 L 30 -20 C 30 14 16 36 0 46 C -16 36 -30 14 -30 -20 Z" fill="rgba(98, 201, 255, 0.18)" stroke="url(#goldGrad)" stroke-width="1.5"/>
 
-      <!-- Vault Dial / Keyhole -->
-      <circle cx="0" cy="-2" r="14" fill="#1e293b" stroke="url(#goldGrad)" stroke-width="2"/>
+      <!-- Vault Dial / Keyhole Tumbler -->
+      <circle cx="0" cy="-2" r="14" fill="#141f36" stroke="url(#goldGrad)" stroke-width="2"/>
+      <!-- Dial Radial Ticks -->
+      <line x1="0" y1="-14" x2="0" y2="-10" stroke="#ffd54f" stroke-width="1.5"/>
+      <line x1="14" y1="-2" x2="10" y2="-2" stroke="#ffd54f" stroke-width="1.5"/>
+      <line x1="0" y1="10" x2="0" y2="6" stroke="#ffd54f" stroke-width="1.5"/>
+      <line x1="-14" y1="-2" x2="-10" y2="-2" stroke="#ffd54f" stroke-width="1.5"/>
+      
+      <!-- Keyhole Center Pin -->
       <circle cx="0" cy="-2" r="6" fill="#ffd54f"/>
       <path d="M -3 -2 L 3 -2 L 5 12 L -5 12 Z" fill="#ffd54f"/>
+    </g>
 
-      <!-- Holographic Sparkles around Vault -->
-      <path d="M 0 -58 L 2 -48 L 12 -46 L 2 -44 L 0 -34 L -2 -44 L -12 -46 L -2 -48 Z" fill="#62c9ff"/>
-      <path d="M 38 32 L 40 38 L 46 40 L 40 42 L 38 48 L 36 42 L 30 40 L 36 38 Z" fill="#ffd54f"/>
-      <path d="M -38 32 L -36 38 L -30 40 L -36 42 L -38 48 L -40 42 L -46 40 L -40 38 Z" fill="#62c9ff"/>
+    <!-- Holographic Corner Sparkles around Vault -->
+    <g class="cv-sparkle-1">
+      <path d="M 120 137 L 122 145 L 130 147 L 122 149 L 120 157 L 118 149 L 110 147 L 118 145 Z" fill="#62c9ff"/>
+    </g>
+    <g class="cv-sparkle-2">
+      <path d="M 158 239 L 160 243 L 166 245 L 160 247 L 158 251 L 156 247 L 150 245 L 156 243 Z" fill="#ffd54f"/>
+    </g>
+    <g class="cv-sparkle-3">
+      <path d="M 82 239 L 84 243 L 90 245 L 84 247 L 82 251 L 80 247 L 74 245 L 80 243 Z" fill="#62c9ff"/>
     </g>
 
     <!-- Card Bottom Foil Ribbon -->
-    <rect x="36" y="296" width="168" height="24" rx="4" fill="rgba(15, 23, 42, 0.85)" stroke="rgba(98, 201, 255, 0.3)" stroke-width="1"/>
-    <text x="120" y="312" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="10" font-weight="900" fill="#62c9ff" text-anchor="middle" letter-spacing="3">MY CARD VAULT</text>
+    <rect x="36" y="296" width="168" height="24" rx="4" fill="rgba(8, 14, 26, 0.9)" stroke="rgba(98, 201, 255, 0.4)" stroke-width="1"/>
+    <text x="120" y="312" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'JetBrains Mono', sans-serif" font-size="10" font-weight="900" fill="#62c9ff" text-anchor="middle" letter-spacing="3">MY CARD VAULT</text>
+
+    <!-- Specular Reflection across entire slab face -->
+    <g clip-path="url(#slabClip)">
+      <rect class="cv-slab-specular" x="-100" y="-50" width="80" height="500" fill="url(#holoSheenGrad)" opacity="0.6"/>
+    </g>
   </g>
 </svg>

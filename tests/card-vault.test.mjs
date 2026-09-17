@@ -44,4 +44,44 @@ describe('Card Vault Submodule Tests', () => {
     `);
     assert.strictEqual(res.hasQueryVar, true, 'Query var card-vault must be registered');
   });
+
+  it('Card_Vault_Public dynamically replaces title and meta tags with WordPress site title', () => {
+    const res = runPhpJson(`
+      if (!function_exists('get_bloginfo')) {
+        function get_bloginfo($show = 'name') { return 'PokeVault Tokyo'; }
+      }
+      require_once '/var/www/html/wp-content/plugins/xophz-compass-card-vault/public/class-card-vault-public.php';
+      $public = new Card_Vault_Public();
+      $distHtml = file_get_contents('/var/www/html/wp-content/plugins/xophz-compass-card-vault/public/dist/index.html');
+      $filteredHtml = $public->filter_html_output($distHtml, 'card-vault');
+
+      preg_match('#<title>(.*?)</title>#', $filteredHtml, $titleMatches);
+      preg_match('#<meta name="application-name" content="([^"]+)"#', $filteredHtml, $appMatches);
+      preg_match('#<meta name="apple-mobile-web-app-title" content="([^"]+)"#', $filteredHtml, $appleMatches);
+
+      echo json_encode([
+        'title' => $titleMatches[1] ?? '',
+        'applicationName' => $appMatches[1] ?? '',
+        'appleTitle' => $appleMatches[1] ?? ''
+      ]);
+    `);
+    assert.strictEqual(res.title, 'PokeVault Tokyo', 'HTML <title> tag must match WordPress site title');
+    assert.strictEqual(res.applicationName, 'PokeVault Tokyo', 'Application name meta tag must match site title');
+    assert.strictEqual(res.appleTitle, 'PokeVault Tokyo', 'Apple mobile title meta tag must match site title');
+  });
+
+  it('Card_Vault_Public injects siteTitle into window.wpApiSettings payload', () => {
+    const res = runPhpJson(`
+      if (!function_exists('get_bloginfo')) {
+        function get_bloginfo($show = 'name') { return 'Card Sharks Syndicate'; }
+      }
+      require_once '/var/www/html/wp-content/plugins/xophz-compass-card-vault/public/class-card-vault-public.php';
+      $public = new Card_Vault_Public();
+      $settings = $public->filter_api_settings([], 'card-vault');
+      echo json_encode([
+        'siteTitle' => $settings['siteTitle'] ?? null
+      ]);
+    `);
+    assert.strictEqual(res.siteTitle, 'Card Sharks Syndicate', 'siteTitle in wpApiSettings must match site title');
+  });
 });

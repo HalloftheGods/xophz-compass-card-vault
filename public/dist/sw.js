@@ -8,7 +8,7 @@
  * Strict Hygiene: Zero em dashes (hyphens or colons only).
  */
 
-const CACHE_NAME = 'card-vault-pwa-v1';
+const CACHE_NAME = 'card-vault-pwa-v2';
 
 const CORE_ASSETS = [
   './',
@@ -18,6 +18,8 @@ const CORE_ASSETS = [
   './favicon.ico',
   './favicon.svg',
   './assets/icon.svg',
+  './icons/favicon-32x32.png',
+  './icons/favicon-16x16.png',
   './icons/icon-192x192.png',
   './icons/icon-512x512.png',
   './icons/icon-maskable-192x192.png',

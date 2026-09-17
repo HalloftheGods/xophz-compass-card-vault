@@ -5,6 +5,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [2026-09-16]
 
+### Added
+- **Dynamic WordPress Site Title Injection (`public/class-card-vault-public.php`)**: Implemented `filter_html_output` hook (`xophz_compass_dev_proxy_card-vault_html` and `xophz_compass_dev_proxy_html`) dynamically replacing `<title>`, `application-name`, and `apple-mobile-web-app-title` in `index.html` with the active WordPress site title (`get_bloginfo('name')`). Injected `siteTitle` into `window.wpApiSettings` payload.
+
 ### Changed
 - **MySQL-Native Catalog Pricing & Price History Transition (`includes/class-card-vault-catalog-db.php`, `includes/class-card-vault-price-history.php`)**: Transitioned graded slab pricing (`psa9_price`, `psa10_price`, `bgs95_price`, `cgc10_price`, `pricing_source`) and historical price snapshots from legacy SQLite `cards.db` to WordPress MySQL InnoDB tables (`{$wpdb->prefix}card_vault_cards` and `{$wpdb->prefix}card_vault_price_history`).
 - **Batch Pricing Lookup Engine (`Card_Vault_Catalog_DB::get_cards_pricing_batch`)**: Refactored batch pricing query to directly query the MySQL cards table using `$wpdb` with chunked prepared statements, supporting both direct card IDs and numeric TCGPlayer IDs.
