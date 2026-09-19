@@ -181,6 +181,14 @@ class Card_Vault_Public {
 			$payload['communitySettings'] = Card_Vault_Community::get_settings();
 		}
 
+		if ( class_exists( 'Card_Vault_Api' ) ) {
+			$turnstile = Card_Vault_Api::get_turnstile_config();
+			$payload['turnstile'] = array(
+				'enabled' => ! empty( $turnstile['sitekey'] ),
+				'sitekey' => $turnstile['sitekey'] ?? '',
+			);
+		}
+
 		return $payload;
 	}
 }

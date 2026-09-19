@@ -44,14 +44,21 @@ class Card_Vault_Catalog_REST {
 				)
 			);
 
-			// 2. Single Card Details
+			// 2. Single Card Details & Admin Card Updates
 			register_rest_route(
 				$ns,
 				'/catalog/cards/(?P<id>[a-zA-Z0-9-_]+)',
 				array(
-					'methods'             => WP_REST_Server::READABLE,
-					'callback'            => array( __CLASS__, 'handle_get_card' ),
-					'permission_callback' => array( __CLASS__, 'check_read_permission' ),
+					array(
+						'methods'             => WP_REST_Server::READABLE,
+						'callback'            => array( __CLASS__, 'handle_get_card' ),
+						'permission_callback' => array( __CLASS__, 'check_read_permission' ),
+					),
+					array(
+						'methods'             => WP_REST_Server::EDITABLE,
+						'callback'            => array( __CLASS__, 'handle_update_card' ),
+						'permission_callback' => array( __CLASS__, 'check_admin_permission' ),
+					),
 				)
 			);
 
@@ -416,6 +423,54 @@ class Card_Vault_Catalog_REST {
 		return rest_ensure_response( array(
 			'success' => true,
 			'card'    => $card,
+		) );
+	}
+
+	/**
+	 * Handle admin update of an existing catalog card (product ID, prices).
+	 *
+	 * @param WP_REST_Request $request
+	 * @return WP_REST_Response|WP_Error
+	 */
+	public static function handle_update_card( WP_REST_Request $request ) {
+		$id   = sanitize_text_field( (string) $request->get_param( 'id' ) );
+		$card = Card_Vault_Catalog_DB::get_card_by_id( $id );
+
+		if ( ! $card && is_numeric( $id ) ) {
+			$card = Card_Vault_Catalog_DB::get_card_by_tcgplayer_id( (int) $id );
+		}
+
+		if ( ! $card ) {
+			return new WP_Error( 'card_not_found', __( 'Card not found in master catalog.', 'xophz-compass-card-vault' ), array( 'status' => 404 ) );
+		}
+
+		$updates = array();
+		$tcgplayer_id = $request->get_param( 'tcgplayer_id' ) ?? $request->get_param( 'tcgplayerId' );
+		if ( $tcgplayer_id !== null ) {
+			$updates['tcgplayer_id']  = absint( $tcgplayer_id );
+			$updates['tcgplayer_url'] = 'https://www.tcgplayer.com/product/' . absint( $tcgplayer_id );
+		}
+
+		$market_price = $request->get_param( 'market_price' ) ?? $request->get_param( 'marketPrice' );
+		if ( $market_price !== null ) {
+			$updates['market_price'] = floatval( $market_price );
+		}
+
+		if ( empty( $updates ) ) {
+			return new WP_Error( 'no_updates_provided', __( 'No valid fields provided for update.', 'xophz-compass-card-vault' ), array( 'status' => 400 ) );
+		}
+
+		$success = Card_Vault_Catalog_DB::update_card( $card['id'], $updates );
+		if ( ! $success ) {
+			return new WP_Error( 'update_failed', __( 'Failed to update catalog card in database.', 'xophz-compass-card-vault' ), array( 'status' => 500 ) );
+		}
+
+		$updated_card = Card_Vault_Catalog_DB::get_card_by_id( $card['id'] );
+
+		return rest_ensure_response( array(
+			'success' => true,
+			'card'    => $updated_card,
+			'message' => __( 'Catalog card updated successfully.', 'xophz-compass-card-vault' ),
 		) );
 	}
 

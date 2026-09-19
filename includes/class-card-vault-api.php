@@ -236,6 +236,12 @@ class Card_Vault_API {
 			'permission_callback' => '__return_true',
 		) );
 
+		register_rest_route( self::NAMESPACE, '/auth/register', array(
+			'methods'             => WP_REST_Server::CREATABLE,
+			'callback'            => array( $this, 'handle_auth_register' ),
+			'permission_callback' => '__return_true',
+		) );
+
 		register_rest_route( self::NAMESPACE, '/auth/logout', array(
 			'methods'             => WP_REST_Server::CREATABLE,
 			'callback'            => array( $this, 'handle_auth_logout' ),
@@ -1399,10 +1405,11 @@ class Card_Vault_API {
 			$rest_route = (string) $_SERVER['REQUEST_URI'];
 		}
 
-		$is_login_route = strpos( $rest_route, '/' . self::NAMESPACE . '/auth/login' ) !== false;
-		$is_auth_route  = strpos( $rest_route, '/' . self::NAMESPACE . '/auth/' ) !== false;
+		$is_public_auth_route = strpos( $rest_route, '/' . self::NAMESPACE . '/auth/login' ) !== false ||
+		                        strpos( $rest_route, '/' . self::NAMESPACE . '/auth/register' ) !== false;
+		$is_auth_route        = strpos( $rest_route, '/' . self::NAMESPACE . '/auth/' ) !== false;
 
-		if ( $is_login_route ) {
+		if ( $is_public_auth_route ) {
 			return null;
 		}
 
@@ -1414,8 +1421,77 @@ class Card_Vault_API {
 	}
 
 	/**
+	 * Retrieves Turnstile configuration from WP Defender, Cloudflare Turnstile, or environment constants.
+	 *
+	 * @return array|null Associative array with sitekey and secret, or null if Turnstile is not active.
+	 */
+	public static function get_turnstile_config(): ?array {
+		// 1. Check WP Defender settings
+		$def_settings = get_option( 'wd_recaptcha_settings' );
+		if ( is_array( $def_settings ) && ! empty( $def_settings['enabled'] ) ) {
+			$type = $def_settings['active_type'] ?? '';
+			if ( 'turnstile' === $type && ! empty( $def_settings['data_turnstile']['key'] ) ) {
+				return array(
+					'sitekey' => (string) $def_settings['data_turnstile']['key'],
+					'secret'  => (string) ( $def_settings['data_turnstile']['secret'] ?? '' ),
+				);
+			}
+		}
+
+		// 2. Check Cloudflare Turnstile plugin settings
+		$cf_key    = get_option( 'cfturnstile_key' ) ?: get_option( 'cf_turnstile_site_key' );
+		$cf_secret = get_option( 'cfturnstile_secret' ) ?: get_option( 'cf_turnstile_secret_key' );
+		if ( ! empty( $cf_key ) && ! empty( $cf_secret ) ) {
+			return array(
+				'sitekey' => (string) $cf_key,
+				'secret'  => (string) $cf_secret,
+			);
+		}
+
+		// 3. Check environment constants
+		if ( defined( 'CLOUDFLARE_TURNSTILE_SITE_KEY' ) && defined( 'CLOUDFLARE_TURNSTILE_SECRET_KEY' ) ) {
+			return array(
+				'sitekey' => CLOUDFLARE_TURNSTILE_SITE_KEY,
+				'secret'  => CLOUDFLARE_TURNSTILE_SECRET_KEY,
+			);
+		}
+
+		return null;
+	}
+
+	/**
+	 * Validates a Turnstile response token against Cloudflare Turnstile verification API.
+	 *
+	 * @param string $token     Turnstile response token.
+	 * @param string $secret    Turnstile secret key.
+	 * @param string $remote_ip Optional remote IP address.
+	 * @return bool True if token verification succeeded.
+	 */
+	public static function verify_turnstile_token( string $token, string $secret, string $remote_ip = '' ): bool {
+		if ( empty( $token ) || empty( $secret ) ) {
+			return false;
+		}
+
+		$response = wp_remote_post( 'https://challenges.cloudflare.com/turnstile/v0/siteverify', array(
+			'timeout' => 10,
+			'body'    => array(
+				'secret'   => $secret,
+				'response' => $token,
+				'remoteip' => ! empty( $remote_ip ) ? $remote_ip : ( $_SERVER['REMOTE_ADDR'] ?? '' ),
+			),
+		) );
+
+		if ( is_wp_error( $response ) ) {
+			return false;
+		}
+
+		$body = json_decode( wp_remote_retrieve_body( $response ), true );
+		return ! empty( $body['success'] );
+	}
+
+	/**
 	 * Handle POST /auth/login.
-	 * Authenticates user credentials directly via WordPress without triggering wp-login.php Turnstile captcha.
+	 * Authenticates user credentials directly via WordPress.
 	 *
 	 * @param WP_REST_Request $request Request.
 	 * @return WP_REST_Response
@@ -1425,6 +1501,18 @@ class Card_Vault_API {
 		$username = isset( $params['username'] ) ? trim( (string) $params['username'] ) : '';
 		$password = isset( $params['password'] ) ? (string) $params['password'] : '';
 		$remember = ! empty( $params['remember'] );
+
+		// Validate Turnstile captcha if active on the site
+		$turnstile_config = self::get_turnstile_config();
+		if ( $turnstile_config && ! empty( $turnstile_config['secret'] ) ) {
+			$turnstile_token = $params['turnstileToken'] ?? $params['cf-turnstile-response'] ?? $params['wpdef-turnstile-response'] ?? '';
+			if ( empty( $turnstile_token ) || ! self::verify_turnstile_token( $turnstile_token, $turnstile_config['secret'] ) ) {
+				return new WP_REST_Response( array(
+					'success' => false,
+					'error'   => __( 'Turnstile verification failed. Please complete the captcha.', 'xophz-compass-card-vault' ),
+				), 403 );
+			}
+		}
 
 		if ( empty( $username ) || empty( $password ) ) {
 			return new WP_REST_Response( array(
@@ -1523,6 +1611,122 @@ class Card_Vault_API {
 	}
 
 	/**
+	 * Handle POST /auth/register.
+	 * Registers a new WordPress user directly and creates an authenticated session.
+	 *
+	 * @param WP_REST_Request $request Request.
+	 * @return WP_REST_Response
+	 */
+	public function handle_auth_register( $request ) {
+		$params   = $request->get_json_params();
+		$username = isset( $params['username'] ) ? trim( (string) $params['username'] ) : '';
+		$email    = isset( $params['email'] ) ? trim( (string) $params['email'] ) : '';
+		$password = isset( $params['password'] ) ? (string) $params['password'] : '';
+		$display  = isset( $params['displayName'] ) ? sanitize_text_field( (string) $params['displayName'] ) : '';
+
+		// Validate Turnstile captcha if active on the site
+		$turnstile_config = self::get_turnstile_config();
+		if ( $turnstile_config && ! empty( $turnstile_config['secret'] ) ) {
+			$turnstile_token = $params['turnstileToken'] ?? $params['cf-turnstile-response'] ?? $params['wpdef-turnstile-response'] ?? '';
+			if ( empty( $turnstile_token ) || ! self::verify_turnstile_token( $turnstile_token, $turnstile_config['secret'] ) ) {
+				return new WP_REST_Response( array(
+					'success' => false,
+					'error'   => __( 'Turnstile verification failed. Please complete the captcha.', 'xophz-compass-card-vault' ),
+				), 403 );
+			}
+		}
+
+		if ( empty( $username ) || empty( $email ) || empty( $password ) ) {
+			return new WP_REST_Response( array(
+				'success' => false,
+				'error'   => __( 'Username, email address, and password are required.', 'xophz-compass-card-vault' ),
+			), 400 );
+		}
+
+		if ( ! is_email( $email ) ) {
+			return new WP_REST_Response( array(
+				'success' => false,
+				'error'   => __( 'Please provide a valid email address.', 'xophz-compass-card-vault' ),
+			), 400 );
+		}
+
+		if ( email_exists( $email ) ) {
+			return new WP_REST_Response( array(
+				'success' => false,
+				'error'   => __( 'An account with that email address already exists. Please sign in.', 'xophz-compass-card-vault' ),
+			), 400 );
+		}
+
+		$sanitized_user = sanitize_user( $username, true );
+		if ( empty( $sanitized_user ) || ! validate_username( $username ) ) {
+			return new WP_REST_Response( array(
+				'success' => false,
+				'error'   => __( 'Invalid username. Please use letters, numbers, and hyphens only.', 'xophz-compass-card-vault' ),
+			), 400 );
+		}
+
+		if ( username_exists( $sanitized_user ) ) {
+			return new WP_REST_Response( array(
+				'success' => false,
+				'error'   => __( 'That username is already taken. Please choose another.', 'xophz-compass-card-vault' ),
+			), 400 );
+		}
+
+		if ( strlen( $password ) < 6 ) {
+			return new WP_REST_Response( array(
+				'success' => false,
+				'error'   => __( 'Password must be at least 6 characters long.', 'xophz-compass-card-vault' ),
+			), 400 );
+		}
+
+		$user_id = wp_create_user( $sanitized_user, $password, $email );
+		if ( is_wp_error( $user_id ) ) {
+			return new WP_REST_Response( array(
+				'success' => false,
+				'error'   => $user_id->get_error_message(),
+			), 400 );
+		}
+
+		$user = get_user_by( 'id', $user_id );
+		if ( ! $user ) {
+			return new WP_REST_Response( array(
+				'success' => false,
+				'error'   => __( 'Failed to retrieve newly registered user profile.', 'xophz-compass-card-vault' ),
+			), 500 );
+		}
+
+		$display_name = ! empty( $display ) ? $display : $sanitized_user;
+		wp_update_user( array(
+			'ID'           => $user->ID,
+			'display_name' => $display_name,
+			'role'         => 'subscriber',
+		) );
+
+		if ( class_exists( 'Xophz_Compass_Auth_API' ) ) {
+			$session = Xophz_Compass_Auth_API::establish_session( $user, true );
+			$nonce   = $session['nonce'];
+		} else {
+			wp_set_current_user( $user->ID, $user->user_login );
+			wp_set_auth_cookie( $user->ID, true, is_ssl() );
+			do_action( 'wp_login', $user->user_login, $user );
+			$nonce = wp_create_nonce( 'wp_rest' );
+		}
+
+		return new WP_REST_Response( array(
+			'success' => true,
+			'nonce'   => $nonce,
+			'user'    => array(
+				'id'          => $user->ID,
+				'userLogin'   => $user->user_login,
+				'displayName' => $display_name,
+				'email'       => $user->user_email,
+				'role'        => 'collector',
+				'consignorId' => null,
+			),
+		), 200 );
+	}
+
+	/**
 	 * Handle POST /auth/logout.
 	 * Terminates the active WordPress session.
 	 *
@@ -1544,7 +1748,12 @@ class Card_Vault_API {
 	 * @return WP_REST_Response
 	 */
 	public function handle_auth_me() {
-		$user_id = get_current_user_id();
+		$user_id   = get_current_user_id();
+		$turnstile = self::get_turnstile_config();
+		$turnstile_meta = array(
+			'enabled' => ! empty( $turnstile['sitekey'] ),
+			'sitekey' => $turnstile['sitekey'] ?? '',
+		);
 
 		if ( ! $user_id ) {
 			return new WP_REST_Response( array(
@@ -1552,6 +1761,7 @@ class Card_Vault_API {
 				'isLoggedIn' => false,
 				'nonce'      => wp_create_nonce( 'wp_rest' ),
 				'user'       => null,
+				'turnstile'  => $turnstile_meta,
 			), 200 );
 		}
 
@@ -1571,6 +1781,7 @@ class Card_Vault_API {
 			'success'    => true,
 			'isLoggedIn' => true,
 			'nonce'      => wp_create_nonce( 'wp_rest' ),
+			'turnstile'  => $turnstile_meta,
 			'user'       => array(
 				'id'          => $user_id,
 				'userLogin'   => $user->user_login,

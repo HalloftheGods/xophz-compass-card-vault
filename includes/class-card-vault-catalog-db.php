@@ -209,6 +209,16 @@ class Card_Vault_Catalog_DB {
 		$offset  = max( 0, $offset );
 		$trimmed = trim( $query );
 
+		// Fast Path 0: Pure numeric TCGPlayer Product ID query (e.g. "106996")
+		if ( ctype_digit( $trimmed ) && (int) $trimmed > 0 ) {
+			$tcg_id = (int) $trimmed;
+			$sql = $wpdb->prepare( "SELECT * FROM {$table} WHERE tcgplayer_id = %d LIMIT 1", $tcg_id );
+			$exact = $wpdb->get_results( $sql, ARRAY_A );
+			if ( ! empty( $exact ) ) {
+				return self::format_card_rows( $exact );
+			}
+		}
+
 		// 1. Check for Smart Number Intent
 		$intent = Card_Vault_Number_Normalizer::extract_number_intent( $trimmed );
 
@@ -490,6 +500,56 @@ class Card_Vault_Catalog_DB {
 	}
 
 	/**
+	 * Update an existing catalog card record.
+	 *
+	 * @param string $id Master catalog card ID.
+	 * @param array  $data Fields to update (e.g. tcgplayer_id, market_price).
+	 * @return bool True on success, false on failure.
+	 */
+	public static function update_card( string $id, array $data ): bool {
+		global $wpdb;
+		$table = self::get_table_name();
+		$allowed_fields = array(
+			'tcgplayer_id'  => '%d',
+			'market_price'  => '%f',
+			'low_price'     => '%f',
+			'mid_price'     => '%f',
+			'high_price'    => '%f',
+			'updated_at'    => '%d',
+			'image_url'     => '%s',
+			'tcgplayer_url' => '%s',
+		);
+
+		$updates = array();
+		$formats = array();
+		foreach ( $data as $field => $val ) {
+			if ( isset( $allowed_fields[ $field ] ) ) {
+				$updates[ $field ] = $val;
+				$formats[]         = $allowed_fields[ $field ];
+			}
+		}
+
+		if ( empty( $updates ) ) {
+			return false;
+		}
+
+		if ( ! isset( $updates['updated_at'] ) ) {
+			$updates['updated_at'] = time();
+			$formats[]             = '%d';
+		}
+
+		$result = $wpdb->update(
+			$table,
+			$updates,
+			array( 'id' => $id ),
+			$formats,
+			array( '%s' )
+		);
+
+		return $result !== false;
+	}
+
+	/**
 	 * Retrieve a product by barcode (UPC or TCGPlayer ID).
 	 *
 	 * @param string $barcode Scanned barcode string.
@@ -522,6 +582,11 @@ class Card_Vault_Catalog_DB {
 
 	/**
 	 * Batch upsert an array of card records via MySQL ON DUPLICATE KEY UPDATE.
+	 *
+	 * @param array $cards Array of card associative arrays.
+	 * @return int Number of cards processed.
+	 */
+	public static function batch_upsert_cards( array $cards ): int {
 		global $wpdb;
 		if ( empty( $cards ) ) {
 			return 0;
