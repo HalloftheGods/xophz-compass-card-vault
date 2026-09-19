@@ -44,7 +44,7 @@ self.addEventListener('install', (event) => {
         }
       });
       await Promise.allSettled(cachePromises);
-    }).then(() => self.skipWaiting())
+    }).catch(() => {}).then(() => self.skipWaiting())
   );
 });
 
@@ -57,7 +57,7 @@ self.addEventListener('activate', (event) => {
           .filter((name) => name !== CACHE_NAME)
           .map((name) => caches.delete(name))
       );
-    }).then(() => self.clients.claim())
+    }).catch(() => {}).then(() => self.clients.claim())
   );
 });
 
@@ -107,16 +107,20 @@ self.addEventListener('fetch', (event) => {
         .then((networkResponse) => {
           if (networkResponse && networkResponse.status === 200) {
             const clone = networkResponse.clone();
-            caches.open(CACHE_NAME).then((cache) => cache.put(request, clone));
+            caches.open(CACHE_NAME).then((cache) => cache.put(request, clone)).catch(() => {});
           }
           return networkResponse;
         })
         .catch(async () => {
-          const cachedPage = await caches.match(request);
-          if (cachedPage) return cachedPage;
+          try {
+            const cachedPage = await caches.match(request);
+            if (cachedPage) return cachedPage;
 
-          const fallbackIndex = await caches.match('./index.html') || await caches.match('./');
-          if (fallbackIndex) return fallbackIndex;
+            const fallbackIndex = await caches.match('./index.html') || await caches.match('./');
+            if (fallbackIndex) return fallbackIndex;
+          } catch {
+            // Storage/cache access restricted in this context
+          }
 
           return new Response('Offline: Please connect to the internet to load Card Vault.', {
             status: 503,
@@ -143,7 +147,7 @@ self.addEventListener('fetch', (event) => {
             .then((networkResponse) => {
               if (networkResponse && networkResponse.status === 200) {
                 const clone = networkResponse.clone();
-                caches.open(CACHE_NAME).then((cache) => cache.put(request, clone));
+                caches.open(CACHE_NAME).then((cache) => cache.put(request, clone)).catch(() => {});
               }
             })
             .catch(() => {});
@@ -155,16 +159,20 @@ self.addEventListener('fetch', (event) => {
           .then((networkResponse) => {
             if (networkResponse && networkResponse.status === 200) {
               const clone = networkResponse.clone();
-              caches.open(CACHE_NAME).then((cache) => cache.put(request, clone));
+              caches.open(CACHE_NAME).then((cache) => cache.put(request, clone)).catch(() => {});
             }
             return networkResponse;
           })
           .catch(async () => {
-            const fallback = await caches.match(request);
-            if (fallback) return fallback;
+            try {
+              const fallback = await caches.match(request);
+              if (fallback) return fallback;
+            } catch {
+              // Cache access restricted
+            }
             return new Response('', { status: 504, statusText: 'Gateway Timeout' });
           });
-      })
+      }).catch(() => fetch(request))
     );
     return;
   }
