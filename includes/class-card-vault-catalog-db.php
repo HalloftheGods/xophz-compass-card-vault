@@ -467,7 +467,16 @@ class Card_Vault_Catalog_DB {
 				MAX(updated_at) as last_synced
 			FROM {$table}
 			GROUP BY group_id, group_name, category_id, category_name
-			ORDER BY last_synced DESC, group_name ASC
+			ORDER BY
+				CASE
+					WHEN category_id = 3 THEN 1
+					WHEN category_id = 68 THEN 2
+					WHEN category_id = 71 THEN 3
+					WHEN category_id = 1 THEN 4
+					ELSE 10
+				END ASC,
+				category_name ASC,
+				group_id DESC
 		";
 		$rows = $wpdb->get_results( $sql, ARRAY_A );
 		return $rows ?: array();

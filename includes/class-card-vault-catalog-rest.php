@@ -363,6 +363,7 @@ class Card_Vault_Catalog_REST {
 		$query    = (string) ( $request->get_param( 'q' ) ?: '' );
 		$category = (int) $request->get_param( 'category' );
 		$group    = (int) $request->get_param( 'group' );
+		$groups   = (string) ( $request->get_param( 'groups' ) ?: '' );
 		$rarity   = (string) $request->get_param( 'rarity' );
 		$page     = max( 1, (int) ( $request->get_param( 'page' ) ?: 1 ) );
 		$limit    = max( 1, min( 100, (int) ( $request->get_param( 'limit' ) ?: 24 ) ) );
@@ -372,7 +373,9 @@ class Card_Vault_Catalog_REST {
 		if ( $category > 0 ) {
 			$filters['category_id'] = $category;
 		}
-		if ( $group > 0 ) {
+		if ( ! empty( $groups ) ) {
+			$filters['group_ids'] = array_filter( array_map( 'intval', explode( ',', $groups ) ) );
+		} elseif ( $group > 0 ) {
 			$filters['group_id'] = $group;
 		}
 		if ( ! empty( $rarity ) ) {
