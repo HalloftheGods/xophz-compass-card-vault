@@ -1,0 +1,1 @@
+import{M as e}from"./tag-BOINlRCY.js";function t(){let t=e(`useScopeId`).vnode.scopeId;return{scopeId:t?{[t]:``}:void 0}}export{t};

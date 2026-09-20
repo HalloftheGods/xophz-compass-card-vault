@@ -1,0 +1,1 @@
+import{p as e}from"./tag-BOINlRCY.js";var t=e({name:`chevron-up`,size:24,node:[[`path`,{d:`m18 15-6-6-6 6`,key:`153udz`}]]});export{t};

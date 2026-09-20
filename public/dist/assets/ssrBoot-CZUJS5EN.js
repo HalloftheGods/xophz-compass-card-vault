@@ -1,0 +1,1 @@
+import{Wn as e,Yn as t,_n as n,qn as r}from"./tag-BOINlRCY.js";function i(){let i=r(!1);return n(()=>{window.requestAnimationFrame(()=>{i.value=!0})}),{ssrBootStyles:t(()=>i.value?void 0:{transition:`none !important`}),isBooted:e(i)}}export{i as t};
