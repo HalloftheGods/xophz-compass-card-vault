@@ -1,1 +1,0 @@
-import{p as e}from"./tag-BOINlRCY.js";var t=e({name:`minus`,size:24,node:[[`path`,{d:`M5 12h14`,key:`1ays0h`}]]});export{t};

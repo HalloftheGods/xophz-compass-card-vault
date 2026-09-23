@@ -112,15 +112,12 @@ self.addEventListener('fetch', (event) => {
           return networkResponse;
         })
         .catch(async () => {
-          try {
-            const cachedPage = await caches.match(request);
-            if (cachedPage) return cachedPage;
+          const cachedPage = await caches.match(request).catch(() => null);
+          if (cachedPage) return cachedPage;
 
-            const fallbackIndex = await caches.match('./index.html') || await caches.match('./');
-            if (fallbackIndex) return fallbackIndex;
-          } catch {
-            // Storage/cache access restricted in this context
-          }
+          const fallbackIndex = (await caches.match('./index.html').catch(() => null)) ||
+            (await caches.match('./').catch(() => null));
+          if (fallbackIndex) return fallbackIndex;
 
           return new Response('Offline: Please connect to the internet to load Card Vault.', {
             status: 503,
@@ -164,12 +161,8 @@ self.addEventListener('fetch', (event) => {
             return networkResponse;
           })
           .catch(async () => {
-            try {
-              const fallback = await caches.match(request);
-              if (fallback) return fallback;
-            } catch {
-              // Cache access restricted
-            }
+            const fallback = await caches.match(request).catch(() => null);
+            if (fallback) return fallback;
             return new Response('', { status: 504, statusText: 'Gateway Timeout' });
           });
       }).catch(() => fetch(request))

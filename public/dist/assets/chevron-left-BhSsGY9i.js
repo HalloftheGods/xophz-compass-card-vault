@@ -1,0 +1,1 @@
+import{m as e}from"./tag-BmePyjXp.js";var t=e({name:`chevron-right`,size:24,node:[[`path`,{d:`m9 18 6-6-6-6`,key:`mthhwq`}]]}),n=e({name:`chevron-left`,size:24,node:[[`path`,{d:`m15 18-6-6 6-6`,key:`1wnfg3`}]]});export{t as n,n as t};
