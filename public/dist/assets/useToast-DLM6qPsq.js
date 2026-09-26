@@ -1,0 +1,1 @@
+import{gr as e,hn as t}from"./tag-BwWI6PKY.js";var n=4e3,r=e({status:`idle`});function i(){return{toastState:r,isVisible:t(()=>r.value.status===`visible`),showToast:(e,t=`info`,i=n)=>{e&&e.trim().length>0&&(r.value={status:`visible`,message:e.trim(),type:t,duration:i})},hideToast:()=>{r.value={status:`idle`}}}}export{i as t};

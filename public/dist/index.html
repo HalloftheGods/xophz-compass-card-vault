@@ -1,173 +1,283 @@
 <!DOCTYPE html>
-<html lang="en" class="h-full overflow-hidden">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>My Card Vault</title>
-    <meta name="description" content="High-speed Pokemon TCG inventory, live market pricing, and show POS." />
-    <meta name="application-name" content="My Card Vault" />
-    <meta name="apple-mobile-web-app-title" content="Card Vault" />
-    <meta name="apple-mobile-web-app-capable" content="yes" />
-    <meta name="mobile-web-app-capable" content="yes" />
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-    <meta name="theme-color" content="#04070e" />
-    <script>
-      (function() {
-        try {
-          var saved = localStorage.getItem('my-card-vault-theme');
-          var theme = saved === 'light' ? 'light' : 'dark';
-          document.documentElement.classList.add(theme);
-          document.documentElement.setAttribute('data-theme', theme);
-        } catch (e) {
-          document.documentElement.classList.add('dark');
-        }
-      })();
-    </script>
-    <script>
-      if (typeof window !== 'undefined' && !window.wpApiSettings) {
-        window.wpApiSettings = {
-          siteTitle: 'My Card Vault',
-          root: '/wp-json/',
-          nonce: '',
-          version: '26.9.12-1209',
-          versionString: '26.9.12-1209',
-          userId: 0,
-          currentUser: { role: 'guest' }
-        };
+<html
+  lang="en"
+  class="h-full overflow-hidden"
+>
+
+<head>
+  <meta charset="UTF-8" />
+  <meta
+    name="viewport"
+    content="width=device-width, initial-scale=1.0"
+  />
+  <title>My Card Vault</title>
+  <meta
+    name="description"
+    content="High-Speed TCG inventory, live market pricing, and show POS."
+  />
+  <meta
+    name="application-name"
+    content="My Card Vault"
+  />
+  <meta
+    name="apple-mobile-web-app-title"
+    content="Card Vault"
+  />
+  <meta
+    name="apple-mobile-web-app-capable"
+    content="yes"
+  />
+  <meta
+    name="mobile-web-app-capable"
+    content="yes"
+  />
+  <meta
+    name="apple-mobile-web-app-status-bar-style"
+    content="black-translucent"
+  />
+  <meta
+    name="theme-color"
+    content="#04070e"
+  />
+  <script>
+    (function () {
+      try {
+        var saved = localStorage.getItem('my-card-vault-theme');
+        var theme = saved === 'light' ? 'light' : 'dark';
+        document.documentElement.classList.add(theme);
+        document.documentElement.setAttribute('data-theme', theme);
+      } catch (e) {
+        document.documentElement.classList.add('dark');
       }
-    </script>
-    <link rel="manifest" href="manifest.webmanifest" />
-    <link rel="icon" type="image/svg+xml" href="favicon.svg" />
-    <link rel="alternate icon" type="image/png" sizes="32x32" href="icons/favicon-32x32.png" />
-    <link rel="alternate icon" type="image/png" sizes="16x16" href="icons/favicon-16x16.png" />
-    <link rel="alternate icon" href="favicon.ico" />
-    <link rel="apple-touch-icon" sizes="180x180" href="icons/apple-touch-icon.png" />
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap">
-    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" media="print" onload="this.media='all'">
-    <noscript>
-      <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap">
-    </noscript>
-    <style>html,body{color:#f5f5f5;background-color:#04070e;width:100%;height:100%;margin:0;padding:0;overflow:hidden}.cv-boot-loader{z-index:99999;background-color:#04070e;flex-direction:column;justify-content:center;align-items:center;font-family:JetBrains Mono,monospace,sans-serif;display:flex;position:fixed;inset:0}.cv-boot-logo{width:64px;height:64px;animation:2s ease-in-out infinite cv-pulse;position:relative}.cv-boot-glow{background:radial-gradient(circle,#62c9ff59 0%,#62c9ff00 70%);border-radius:50%;animation:2s ease-in-out infinite alternate cv-glow;position:absolute;inset:-12px}.cv-boot-bar-track{background:#ffffff14;border-radius:999px;width:160px;height:3px;margin-top:24px;position:relative;overflow:hidden}.cv-boot-bar-fill{background:linear-gradient(90deg,#38bdf8,#62c9ff);border-radius:999px;width:40%;height:100%;animation:1.2s ease-in-out infinite cv-indeterminate;position:absolute}.cv-boot-text{letter-spacing:.15em;text-transform:uppercase;color:#62c9ff;opacity:.85;margin-top:12px;font-size:11px}@keyframes cv-pulse{0%,to{transform:scale(1)}50%{transform:scale(1.05)}}@keyframes cv-glow{0%{opacity:.4;transform:scale(.9)}to{opacity:.9;transform:scale(1.15)}}@keyframes cv-indeterminate{0%{width:40%;left:-40%}50%{width:50%;left:30%}to{width:40%;left:100%}}</style>
-    <script type="module" crossorigin src="./assets/index-uQzZ72XB.js"></script>
-    <link rel="modulepreload" crossorigin href="./assets/rolldown-runtime-hePW80VL.js">
-    <link rel="modulepreload" crossorigin href="./assets/tag-BmePyjXp.js">
-    <link rel="modulepreload" crossorigin href="./assets/runtime-dom.esm-bundler-Sr3etjfP.js">
-    <link rel="modulepreload" crossorigin href="./assets/debug-BaRjoHCT.js">
-    <link rel="modulepreload" crossorigin href="./assets/storage-Bm0d8Nd1.js">
-    <link rel="modulepreload" crossorigin href="./assets/vue-router-BbToabeO.js">
-    <link rel="modulepreload" crossorigin href="./assets/usePredicateFilter-DtWu0tfz.js">
-    <link rel="modulepreload" crossorigin href="./assets/useAppEdition-Bb_lwbDd.js">
-    <link rel="modulepreload" crossorigin href="./assets/calculations-DwlAmA0g.js">
-    <link rel="modulepreload" crossorigin href="./assets/api-8xLRqv0V.js">
-    <link rel="modulepreload" crossorigin href="./assets/offlineQueue-4-4_qMLb.js">
-    <link rel="modulepreload" crossorigin href="./assets/inventory-DwKWPKLa.js">
-    <link rel="modulepreload" crossorigin href="./assets/useVaultModals-v691Oaqh.js">
-    <link rel="modulepreload" crossorigin href="./assets/useSharedController-DJI3WjeY.js">
-    <link rel="modulepreload" crossorigin href="./assets/useToast-DwZzgz3N.js">
-    <link rel="modulepreload" crossorigin href="./assets/ripple-O65rniDN.js">
-    <link rel="modulepreload" crossorigin href="./assets/easing-PTbYGyZy.js">
-    <link rel="modulepreload" crossorigin href="./assets/deepEqual-D8sJf9Ta.js">
-    <link rel="modulepreload" crossorigin href="./assets/lazy-CYEUOjDo.js">
-    <link rel="modulepreload" crossorigin href="./assets/display-BDd6-2kk.js">
-    <link rel="modulepreload" crossorigin href="./assets/transition-DRxaE_ZO.js">
-    <link rel="modulepreload" crossorigin href="./assets/router-DabBnVZm.js">
-    <link rel="modulepreload" crossorigin href="./assets/focusTrap-D7sXTmlZ.js">
-    <link rel="modulepreload" crossorigin href="./assets/scopeId-BeIaeNC4.js">
-    <link rel="modulepreload" crossorigin href="./assets/VOverlay-DrQVTdD3.js">
-    <link rel="modulepreload" crossorigin href="./assets/createSimpleFunctional-ERD3WWmC.js">
-    <link rel="modulepreload" crossorigin href="./assets/density-DF8yo14F.js">
-    <link rel="modulepreload" crossorigin href="./assets/resizeObserver-IHYj9Eqq.js">
-    <link rel="modulepreload" crossorigin href="./assets/VSheet-DTHbXk0-.js">
-    <link rel="modulepreload" crossorigin href="./assets/VDivider-33alfScx.js">
-    <link rel="modulepreload" crossorigin href="./assets/transitions-BLZ8n1v7.js">
-    <link rel="modulepreload" crossorigin href="./assets/VDefaultsProvider-BS46PGJG.js">
-    <link rel="modulepreload" crossorigin href="./assets/ssrBoot-DqE_k3Px.js">
-    <link rel="modulepreload" crossorigin href="./assets/intersect-BvxOoUBH.js">
-    <link rel="modulepreload" crossorigin href="./assets/VImg-5TkP72Aq.js">
-    <link rel="modulepreload" crossorigin href="./assets/variant-B34g8ufC.js">
-    <link rel="modulepreload" crossorigin href="./assets/VAvatar-fy97pgDh.js">
-    <link rel="modulepreload" crossorigin href="./assets/VInput-DXA5reX8.js">
-    <link rel="modulepreload" crossorigin href="./assets/VProgressCircular-ZevL8dkB.js">
-    <link rel="modulepreload" crossorigin href="./assets/loader-gJSEhAFM.js">
-    <link rel="modulepreload" crossorigin href="./assets/autofocus-CQyg1w3N.js">
-    <link rel="modulepreload" crossorigin href="./assets/VTextField-DJLZoXwh.js">
-    <link rel="modulepreload" crossorigin href="./assets/VSelectionControl-eF1NmRn0.js">
-    <link rel="modulepreload" crossorigin href="./assets/VCheckboxBtn-Ekusd61K.js">
-    <link rel="modulepreload" crossorigin href="./assets/group-HzPOSiKd.js">
-    <link rel="modulepreload" crossorigin href="./assets/VSlideGroup-B49LKW76.js">
-    <link rel="modulepreload" crossorigin href="./assets/VChip-NGUO-etp.js">
-    <link rel="modulepreload" crossorigin href="./assets/VSelect-CPHGtyot.js">
-    <link rel="modulepreload" crossorigin href="./assets/layout-BxUSdZGK.js">
-    <link rel="modulepreload" crossorigin href="./assets/award-D_E_R8en.js">
-    <link rel="modulepreload" crossorigin href="./assets/check-DwsMGvvT.js">
-    <link rel="modulepreload" crossorigin href="./assets/chevron-left-BhSsGY9i.js">
-    <link rel="modulepreload" crossorigin href="./assets/_plugin-vue_export-helper-BDNMzG2s.js">
-    <link rel="modulepreload" crossorigin href="./assets/useSubpageBottomNav-4mTlefk7.js">
-    <link rel="modulepreload" crossorigin href="./assets/PaginationControls-BRnNGPUt.js">
-    <link rel="modulepreload" crossorigin href="./assets/circle-check-BlYZ_SI0.js">
-    <link rel="modulepreload" crossorigin href="./assets/eye-FPGvfdD6.js">
-    <link rel="modulepreload" crossorigin href="./assets/flame-DZ44uqtL.js">
-    <link rel="modulepreload" crossorigin href="./assets/sparkles-D_vEKyoF.js">
-    <link rel="modulepreload" crossorigin href="./assets/zap-D4guZoZ7.js">
-    <link rel="modulepreload" crossorigin href="./assets/useTimeoutFn-DXYcqMWV.js">
-    <link rel="modulepreload" crossorigin href="./assets/catalog-hC2sbPdA.js">
-    <link rel="modulepreload" crossorigin href="./assets/tcgdex-service-D7scEzRj.js">
-    <link rel="modulepreload" crossorigin href="./assets/PokemonCardImage-BB9sIDCk.js">
-    <link rel="modulepreload" crossorigin href="./assets/external-link-BK-oZSfS.js">
-    <link rel="modulepreload" crossorigin href="./assets/minus-rqR9ufOu.js">
-    <link rel="modulepreload" crossorigin href="./assets/plus-rDSb5UOl.js">
-    <link rel="modulepreload" crossorigin href="./assets/shield-alert-DJSgf8Hx.js">
-    <link rel="modulepreload" crossorigin href="./assets/shield-check-COkf9zt-.js">
-    <link rel="modulepreload" crossorigin href="./assets/shopping-bag-CxDk7UkJ.js">
-    <link rel="modulepreload" crossorigin href="./assets/trash-BsKocE1N.js">
-    <link rel="modulepreload" crossorigin href="./assets/trending-down-BEbMyaEy.js">
-    <link rel="modulepreload" crossorigin href="./assets/trending-up-sdiVF1KK.js">
-    <link rel="modulepreload" crossorigin href="./assets/VBtn-DdoUCM5M.js">
-    <link rel="modulepreload" crossorigin href="./assets/VRow-DnzHsHF1.js">
-    <link rel="modulepreload" crossorigin href="./assets/ConditionPill-BCen89py.js">
-    <link rel="modulepreload" crossorigin href="./assets/star-8hpTP2PB.js">
-    <link rel="modulepreload" crossorigin href="./assets/RarityBadge-Bz1h5dcq.js">
-    <link rel="modulepreload" crossorigin href="./assets/sqlite-card-mapper-X6pNVTP2.js">
-    <link rel="modulepreload" crossorigin href="./assets/market-links-RwJ0a9Ch.js">
-    <link rel="stylesheet" crossorigin href="./assets/ripple-CJI50hIQ.css">
-    <link rel="stylesheet" crossorigin href="./assets/VOverlay-CKBxglwy.css">
-    <link rel="stylesheet" crossorigin href="./assets/density-CH4lNufO.css">
-    <link rel="stylesheet" crossorigin href="./assets/VSheet-B7Vm5FyN.css">
-    <link rel="stylesheet" crossorigin href="./assets/VDivider-BeM1gRhl.css">
-    <link rel="stylesheet" crossorigin href="./assets/VImg-BWluqFyb.css">
-    <link rel="stylesheet" crossorigin href="./assets/VAvatar-C-SI0TYT.css">
-    <link rel="stylesheet" crossorigin href="./assets/VInput-r2VCPtYV.css">
-    <link rel="stylesheet" crossorigin href="./assets/VProgressCircular-D4B5vCxb.css">
-    <link rel="stylesheet" crossorigin href="./assets/loader-KetB1dC_.css">
-    <link rel="stylesheet" crossorigin href="./assets/autofocus-B_mCXygr.css">
-    <link rel="stylesheet" crossorigin href="./assets/VSelectionControl-CgKG0efP.css">
-    <link rel="stylesheet" crossorigin href="./assets/VSlideGroup-hNb4GLXw.css">
-    <link rel="stylesheet" crossorigin href="./assets/VChip-Di9u98-t.css">
-    <link rel="stylesheet" crossorigin href="./assets/VSelect-Xb6NhU4l.css">
-    <link rel="stylesheet" crossorigin href="./assets/PaginationControls-ByxkK_TW.css">
-    <link rel="stylesheet" crossorigin href="./assets/VBtn-CFa_g3Ib.css">
-    <link rel="stylesheet" crossorigin href="./assets/VRow-Dd63ltWq.css">
-    <link rel="stylesheet" crossorigin href="./assets/index-WdfHauCU.css">
-  </head>
-  <body class="text-neutral-100 h-full overflow-hidden font-mono antialiased">
-    <div id="app" class="h-full overflow-hidden">
-      <div class="cv-boot-loader">
-        <div class="cv-boot-logo">
-          <div class="cv-boot-glow"></div>
-          <svg viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:100%;">
-            <circle cx="256" cy="256" r="236" fill="#0a1020" stroke="#62c9ff" stroke-width="12" stroke-opacity="0.6"/>
-            <rect x="140" y="100" width="232" height="312" rx="20" fill="#0f172a" stroke="#62c9ff" stroke-width="8"/>
-            <path d="M210 210H302V302H210Z" stroke="#ffd54f" stroke-width="10" stroke-linejoin="round"/>
-            <circle cx="256" cy="256" r="24" fill="#ffd54f"/>
-          </svg>
-        </div>
-        <div class="cv-boot-bar-track">
-          <div class="cv-boot-bar-fill"></div>
-        </div>
-        <div class="cv-boot-text">MY CARD VAULT</div>
+    })();
+  </script>
+  <script>
+    if (typeof window !== 'undefined' && !window.wpApiSettings) {
+      window.wpApiSettings = {
+        siteTitle: 'My Card Vault',
+        root: '/wp-json/',
+        nonce: '',
+        version: '26.9.12-1209',
+        versionString: '26.9.12-1209',
+        userId: 0,
+        currentUser: { role: 'guest' }
+      };
+    }
+  </script>
+  <link
+    rel="manifest"
+    href="manifest.webmanifest"
+  />
+  <link
+    rel="icon"
+    type="image/svg+xml"
+    href="favicon.svg"
+  />
+  <link
+    rel="alternate icon"
+    type="image/png"
+    sizes="32x32"
+    href="icons/favicon-32x32.png"
+  />
+  <link
+    rel="alternate icon"
+    type="image/png"
+    sizes="16x16"
+    href="icons/favicon-16x16.png"
+  />
+  <link
+    rel="alternate icon"
+    href="favicon.ico"
+  />
+  <link
+    rel="apple-touch-icon"
+    sizes="180x180"
+    href="icons/apple-touch-icon.png"
+  />
+  <link
+    rel="preconnect"
+    href="https://fonts.googleapis.com"
+  >
+  <link
+    rel="preconnect"
+    href="https://fonts.gstatic.com"
+    crossorigin
+  >
+  <link
+    rel="preload"
+    as="style"
+    href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap"
+  >
+  <link
+    rel="stylesheet"
+    href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap"
+    media="print"
+    onload="this.media='all'"
+  >
+  <noscript>
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap"
+    >
+  </noscript>
+  <style>html,body{color:#f5f5f5;background-color:#04070e;width:100%;height:100%;margin:0;padding:0;overflow:hidden}.cv-boot-loader{z-index:99999;background-color:#04070e;flex-direction:column;justify-content:center;align-items:center;font-family:JetBrains Mono,monospace,sans-serif;display:flex;position:fixed;inset:0}.cv-boot-logo{width:64px;height:64px;animation:2s ease-in-out infinite cv-pulse;position:relative}.cv-boot-glow{background:radial-gradient(circle,#62c9ff59 0%,#62c9ff00 70%);border-radius:50%;animation:2s ease-in-out infinite alternate cv-glow;position:absolute;inset:-12px}.cv-boot-bar-track{background:#ffffff14;border-radius:999px;width:160px;height:3px;margin-top:24px;position:relative;overflow:hidden}.cv-boot-bar-fill{background:linear-gradient(90deg,#38bdf8,#62c9ff);border-radius:999px;width:40%;height:100%;animation:1.2s ease-in-out infinite cv-indeterminate;position:absolute}.cv-boot-text{letter-spacing:.15em;text-transform:uppercase;color:#62c9ff;opacity:.85;margin-top:12px;font-size:11px}@keyframes cv-pulse{0%,to{transform:scale(1)}50%{transform:scale(1.05)}}@keyframes cv-glow{0%{opacity:.4;transform:scale(.9)}to{opacity:.9;transform:scale(1.15)}}@keyframes cv-indeterminate{0%{width:40%;left:-40%}50%{width:50%;left:30%}to{width:40%;left:100%}}</style>
+  <script type="module" crossorigin src="./assets/index-DUs3TuQ0.js"></script>
+  <link rel="modulepreload" crossorigin href="./assets/rolldown-runtime-hePW80VL.js">
+  <link rel="modulepreload" crossorigin href="./assets/tag-BwWI6PKY.js">
+  <link rel="modulepreload" crossorigin href="./assets/runtime-dom.esm-bundler-CZ6cGqzH.js">
+  <link rel="modulepreload" crossorigin href="./assets/debug-BaRjoHCT.js">
+  <link rel="modulepreload" crossorigin href="./assets/storage-CHvxyv5S.js">
+  <link rel="modulepreload" crossorigin href="./assets/vue-router-BpaFAcEo.js">
+  <link rel="modulepreload" crossorigin href="./assets/usePredicateFilter-DtWu0tfz.js">
+  <link rel="modulepreload" crossorigin href="./assets/useAppEdition-BYOL86zo.js">
+  <link rel="modulepreload" crossorigin href="./assets/calculations-DwlAmA0g.js">
+  <link rel="modulepreload" crossorigin href="./assets/api-8xLRqv0V.js">
+  <link rel="modulepreload" crossorigin href="./assets/offlineQueue-DVFOHxSY.js">
+  <link rel="modulepreload" crossorigin href="./assets/inventory-BwuE4Stq.js">
+  <link rel="modulepreload" crossorigin href="./assets/license-BOQ1N1a5.js">
+  <link rel="modulepreload" crossorigin href="./assets/community-BSm72l-e.js">
+  <link rel="modulepreload" crossorigin href="./assets/useVaultModals-CYCuGKOS.js">
+  <link rel="modulepreload" crossorigin href="./assets/useSharedController-DJI3WjeY.js">
+  <link rel="modulepreload" crossorigin href="./assets/useToast-DLM6qPsq.js">
+  <link rel="modulepreload" crossorigin href="./assets/ripple-CO8Uswzc.js">
+  <link rel="modulepreload" crossorigin href="./assets/easing-CihIvBvj.js">
+  <link rel="modulepreload" crossorigin href="./assets/deepEqual-B5N9hCOV.js">
+  <link rel="modulepreload" crossorigin href="./assets/lazy-BGRmAjwE.js">
+  <link rel="modulepreload" crossorigin href="./assets/display-DFx5KhGZ.js">
+  <link rel="modulepreload" crossorigin href="./assets/transition-BMlLJkmF.js">
+  <link rel="modulepreload" crossorigin href="./assets/router-CWUrq9oS.js">
+  <link rel="modulepreload" crossorigin href="./assets/focusTrap-BAq1tfcz.js">
+  <link rel="modulepreload" crossorigin href="./assets/scopeId-DD-EjvnV.js">
+  <link rel="modulepreload" crossorigin href="./assets/VOverlay-B-UJhWxy.js">
+  <link rel="modulepreload" crossorigin href="./assets/createSimpleFunctional-CsdT9nE7.js">
+  <link rel="modulepreload" crossorigin href="./assets/density-BwKIwl6R.js">
+  <link rel="modulepreload" crossorigin href="./assets/resizeObserver-DqNuwKA0.js">
+  <link rel="modulepreload" crossorigin href="./assets/VSheet-CC-VQtKw.js">
+  <link rel="modulepreload" crossorigin href="./assets/VDivider-CCJxZ8OW.js">
+  <link rel="modulepreload" crossorigin href="./assets/transitions-BUP6DFPf.js">
+  <link rel="modulepreload" crossorigin href="./assets/VDefaultsProvider-D2gC81s_.js">
+  <link rel="modulepreload" crossorigin href="./assets/ssrBoot-C8l_xMbc.js">
+  <link rel="modulepreload" crossorigin href="./assets/intersect-Bz0Rw3h7.js">
+  <link rel="modulepreload" crossorigin href="./assets/VImg-C9hEjFLe.js">
+  <link rel="modulepreload" crossorigin href="./assets/variant-DCfberbn.js">
+  <link rel="modulepreload" crossorigin href="./assets/VAvatar-BxXOlnnN.js">
+  <link rel="modulepreload" crossorigin href="./assets/VInput-Cljp5U-x.js">
+  <link rel="modulepreload" crossorigin href="./assets/VProgressCircular-DmmkQV2B.js">
+  <link rel="modulepreload" crossorigin href="./assets/loader-DYQ3fRnq.js">
+  <link rel="modulepreload" crossorigin href="./assets/autofocus-DWGAmNqo.js">
+  <link rel="modulepreload" crossorigin href="./assets/VTextField-99knKAN-.js">
+  <link rel="modulepreload" crossorigin href="./assets/VSelectionControl-DwZh0kmO.js">
+  <link rel="modulepreload" crossorigin href="./assets/VCheckboxBtn-B8vO8wlE.js">
+  <link rel="modulepreload" crossorigin href="./assets/group-D_YugVzm.js">
+  <link rel="modulepreload" crossorigin href="./assets/VSlideGroup-DxX1oZdl.js">
+  <link rel="modulepreload" crossorigin href="./assets/VChip-CW4FrbgX.js">
+  <link rel="modulepreload" crossorigin href="./assets/VSelect-CqfcYhGD.js">
+  <link rel="modulepreload" crossorigin href="./assets/layout-Iy4HM-jB.js">
+  <link rel="modulepreload" crossorigin href="./assets/award-Dro4_K3c.js">
+  <link rel="modulepreload" crossorigin href="./assets/check-CXYpcezt.js">
+  <link rel="modulepreload" crossorigin href="./assets/chevron-right-DUq1-7Un.js">
+  <link rel="modulepreload" crossorigin href="./assets/_plugin-vue_export-helper-BDNMzG2s.js">
+  <link rel="modulepreload" crossorigin href="./assets/useSubpageBottomNav-2iPDllRW.js">
+  <link rel="modulepreload" crossorigin href="./assets/PaginationControls-CT4a4i-o.js">
+  <link rel="modulepreload" crossorigin href="./assets/circle-check-1V9uI66h.js">
+  <link rel="modulepreload" crossorigin href="./assets/eye-DlLhTfIu.js">
+  <link rel="modulepreload" crossorigin href="./assets/flame-CZINRUz9.js">
+  <link rel="modulepreload" crossorigin href="./assets/sparkles-Cj1Qq5K1.js">
+  <link rel="modulepreload" crossorigin href="./assets/zap-DxAA-fwj.js">
+  <link rel="modulepreload" crossorigin href="./assets/useTimeoutFn-CSsNhqC7.js">
+  <link rel="modulepreload" crossorigin href="./assets/catalog-hC2sbPdA.js">
+  <link rel="modulepreload" crossorigin href="./assets/tcgdex-service-D7scEzRj.js">
+  <link rel="modulepreload" crossorigin href="./assets/PokemonCardImage-nvWBrJKL.js">
+  <link rel="modulepreload" crossorigin href="./assets/external-link-D24or21O.js">
+  <link rel="modulepreload" crossorigin href="./assets/minus-C5J0WYN4.js">
+  <link rel="modulepreload" crossorigin href="./assets/plus-DbgrSboP.js">
+  <link rel="modulepreload" crossorigin href="./assets/shield-alert-Cdg9x_Ip.js">
+  <link rel="modulepreload" crossorigin href="./assets/shield-check-DVJfBN2x.js">
+  <link rel="modulepreload" crossorigin href="./assets/shopping-bag-BZ_U1aeM.js">
+  <link rel="modulepreload" crossorigin href="./assets/trash-RLiT9Gw3.js">
+  <link rel="modulepreload" crossorigin href="./assets/trending-down-HyWDlVgA.js">
+  <link rel="modulepreload" crossorigin href="./assets/trending-up-DMiUVIqt.js">
+  <link rel="modulepreload" crossorigin href="./assets/VBtn-Bx0G53L6.js">
+  <link rel="modulepreload" crossorigin href="./assets/VRow-CA5mt43_.js">
+  <link rel="modulepreload" crossorigin href="./assets/ConditionPill-zgRKHGSd.js">
+  <link rel="modulepreload" crossorigin href="./assets/star-CgeFqaLd.js">
+  <link rel="modulepreload" crossorigin href="./assets/RarityBadge-vAMNsUiI.js">
+  <link rel="modulepreload" crossorigin href="./assets/sqlite-card-mapper-X6pNVTP2.js">
+  <link rel="modulepreload" crossorigin href="./assets/market-links-RwJ0a9Ch.js">
+  <link rel="stylesheet" crossorigin href="./assets/ripple-CJI50hIQ.css">
+  <link rel="stylesheet" crossorigin href="./assets/VOverlay-CKBxglwy.css">
+  <link rel="stylesheet" crossorigin href="./assets/density-CH4lNufO.css">
+  <link rel="stylesheet" crossorigin href="./assets/VSheet-B7Vm5FyN.css">
+  <link rel="stylesheet" crossorigin href="./assets/VDivider-BeM1gRhl.css">
+  <link rel="stylesheet" crossorigin href="./assets/VImg-BWluqFyb.css">
+  <link rel="stylesheet" crossorigin href="./assets/VAvatar-C-SI0TYT.css">
+  <link rel="stylesheet" crossorigin href="./assets/VInput-r2VCPtYV.css">
+  <link rel="stylesheet" crossorigin href="./assets/VProgressCircular-D4B5vCxb.css">
+  <link rel="stylesheet" crossorigin href="./assets/loader-KetB1dC_.css">
+  <link rel="stylesheet" crossorigin href="./assets/autofocus-B_mCXygr.css">
+  <link rel="stylesheet" crossorigin href="./assets/VSelectionControl-CgKG0efP.css">
+  <link rel="stylesheet" crossorigin href="./assets/VSlideGroup-hNb4GLXw.css">
+  <link rel="stylesheet" crossorigin href="./assets/VChip-Di9u98-t.css">
+  <link rel="stylesheet" crossorigin href="./assets/VSelect-Xb6NhU4l.css">
+  <link rel="stylesheet" crossorigin href="./assets/PaginationControls-ByxkK_TW.css">
+  <link rel="stylesheet" crossorigin href="./assets/VBtn-CFa_g3Ib.css">
+  <link rel="stylesheet" crossorigin href="./assets/VRow-Dd63ltWq.css">
+  <link rel="stylesheet" crossorigin href="./assets/index-CBDSYlxH.css">
+</head>
+
+<body class="text-neutral-100 h-full overflow-hidden font-mono antialiased">
+  <div
+    id="app"
+    class="h-full overflow-hidden"
+  >
+    <div class="cv-boot-loader">
+      <div class="cv-boot-logo">
+        <div class="cv-boot-glow"></div>
+        <svg
+          viewBox="0 0 512 512"
+          fill="none"
+          xmlns="http://www.w3.org/2000/svg"
+          style="width:100%;height:100%;"
+        >
+          <circle
+            cx="256"
+            cy="256"
+            r="236"
+            fill="#0a1020"
+            stroke="#62c9ff"
+            stroke-width="12"
+            stroke-opacity="0.6"
+          />
+          <rect
+            x="140"
+            y="100"
+            width="232"
+            height="312"
+            rx="20"
+            fill="#0f172a"
+            stroke="#62c9ff"
+            stroke-width="8"
+          />
+          <path
+            d="M210 210H302V302H210Z"
+            stroke="#ffd54f"
+            stroke-width="10"
+            stroke-linejoin="round"
+          />
+          <circle
+            cx="256"
+            cy="256"
+            r="24"
+            fill="#ffd54f"
+          />
+        </svg>
       </div>
+      <div class="cv-boot-bar-track">
+        <div class="cv-boot-bar-fill"></div>
+      </div>
+      <div class="cv-boot-text">MY CARD VAULT</div>
     </div>
-  </body>
+  </div>
+</body>
+
 </html>

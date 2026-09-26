@@ -59,6 +59,50 @@ class Card_Vault_Public {
 			add_filter( 'xophz_compass_dev_proxy_card-vault_html', array( $this, 'filter_html_output' ), 10, 2 );
 			add_filter( 'xophz_compass_dev_proxy_html', array( $this, 'filter_html_output' ), 10, 2 );
 		}
+
+		add_action( 'template_redirect', array( $this, 'handle_checkout_pages' ), 0 );
+	}
+
+	/**
+	 * Intercept and serve standalone checkout proxy and checkout success HTML pages.
+	 */
+	public function handle_checkout_pages(): void {
+		$request_uri  = $_SERVER['REQUEST_URI'] ?? '';
+		$request_path = wp_parse_url( $request_uri, PHP_URL_PATH ) ?? '';
+
+		$target_files = array(
+			'/checkout-proxy.html'              => 'checkout-proxy.html',
+			'/checkout-success.html'            => 'checkout-success.html',
+			'/card-vault/checkout-proxy.html'   => 'checkout-proxy.html',
+			'/card-vault/checkout-success.html' => 'checkout-success.html',
+		);
+
+		if ( ! isset( $target_files[ $request_path ] ) ) {
+			return;
+		}
+
+		$filename   = $target_files[ $request_path ];
+		$candidates = array(
+			XOPHZ_COMPASS_CARD_VAULT_PATH . 'public/dist/' . $filename,
+			dirname( XOPHZ_COMPASS_CARD_VAULT_PATH, 3 ) . '/apps/my-card-vault/public/' . $filename,
+		);
+
+		if ( defined( 'ABSPATH' ) ) {
+			$candidates[] = ABSPATH . 'apps/my-card-vault/public/' . $filename;
+		}
+
+		foreach ( $candidates as $file ) {
+			if ( file_exists( $file ) && ! is_dir( $file ) ) {
+				status_header( 200 );
+				header( 'Content-Type: text/html; charset=UTF-8' );
+				header( 'Access-Control-Allow-Origin: *' );
+				header( 'Cache-Control: no-cache, no-store, must-revalidate' );
+				header( 'Pragma: no-cache' );
+				header( 'Expires: 0' );
+				readfile( $file );
+				exit;
+			}
+		}
 	}
 
 	/**

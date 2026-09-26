@@ -1,0 +1,1 @@
+import{m as e}from"./tag-BwWI6PKY.js";var t=e({name:`loader-circle`,size:24,node:[[`path`,{d:`M21 12a9 9 0 1 1-6.219-8.56`,key:`13zald`}]],aliases:[`loader-2`]});export{t};

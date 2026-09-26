@@ -1,0 +1,1 @@
+import{Vn as e,br as t,hr as n,vr as r}from"./tag-BwWI6PKY.js";function i(){let i=r(!1);return e(()=>{window.requestAnimationFrame(()=>{i.value=!0})}),{ssrBootStyles:t(()=>i.value?void 0:{transition:`none !important`}),isBooted:n(i)}}export{i as t};

@@ -417,6 +417,7 @@
         // 1. Save license in localStorage
         try {
           localStorage.setItem('card_vault_active_license', JSON.stringify(payload));
+          localStorage.setItem('card_vault_license_updated_at', String(Date.now()));
         } catch (e) {}
 
         // 2. Insert license line item directly into sales ledger in localStorage ("our thing")
@@ -450,7 +451,23 @@
           }
         } catch (e) {}
 
-        // 3. PostMessage to opener
+        // 3. BroadcastChannel across all tabs/windows/iframes
+        try {
+          if (typeof BroadcastChannel !== 'undefined') {
+            const channel = new BroadcastChannel('card_vault_license_channel');
+            channel.postMessage({
+              type: 'CARD_VAULT_LICENSE_SUCCESS',
+              sessionId: sessionId,
+              licenseKey: generatedKey,
+              tier: tier,
+              billing: billing,
+              amount: totalAmount
+            });
+            setTimeout(function () { channel.close(); }, 1500);
+          }
+        } catch (e) {}
+
+        // 4. PostMessage to opener
         if (window.opener && !window.opener.closed) {
           try {
             window.opener.postMessage({
@@ -484,11 +501,15 @@
       // Return button closes popup and focuses opener
       if (returnBtn) {
         returnBtn.addEventListener('click', function () {
+          persistAndNotify();
           if (window.opener && !window.opener.closed) {
             window.opener.focus();
             window.close();
           } else {
-            window.location.href = '/?license_success=1&session_id=' + encodeURIComponent(sessionId);
+            window.close();
+            setTimeout(function () {
+              window.location.href = '/os/u?sparks=[["app-launcher"],["card-vault"]]';
+            }, 300);
           }
         });
       }
@@ -496,7 +517,7 @@
       // Open in app
       if (openAppBtn) {
         openAppBtn.addEventListener('click', function () {
-          window.location.href = '/?license_success=1&session_id=' + encodeURIComponent(sessionId);
+          window.location.href = '/os/u?sparks=[["app-launcher"],["card-vault"]]';
         });
       }
     })();

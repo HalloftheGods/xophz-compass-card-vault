@@ -1227,7 +1227,7 @@ class Card_Vault_API {
 	public function handle_license_checkout( $request ) {
 		$params        = $request->get_json_params() ?: array();
 		$tier          = sanitize_key( $params['tier'] ?? 'single' );
-		$billing       = sanitize_key( $params['billing'] ?? 'annual' );
+		$billing       = sanitize_key( $params['billing'] ?? ( $params['billing_cycle'] ?? 'annual' ) );
 		$return_url    = ! empty( $params['return_url'] ) ? esc_url_raw( $params['return_url'] ) : '';
 		$referral_code = ! empty( $params['referral_code'] ) ? sanitize_text_field( $params['referral_code'] ) : '';
 
