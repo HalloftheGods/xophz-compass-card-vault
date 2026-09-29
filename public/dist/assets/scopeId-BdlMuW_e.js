@@ -1,0 +1,1 @@
+import{P as e}from"./tag-BNEwm_lS.js";function t(){let t=e(`useScopeId`).vnode.scopeId;return{scopeId:t?{[t]:``}:void 0}}export{t};

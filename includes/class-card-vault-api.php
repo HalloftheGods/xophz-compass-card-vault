@@ -130,13 +130,13 @@ class Card_Vault_API {
 		) );
 
 		// 11. Card Show Public Showcase & Vendor Bids
-		register_rest_route( self::NAMESPACE, '/showcase/(?P<slug>[a-zA-Z0-9_-]+)', array(
+		register_rest_route( self::NAMESPACE, '/showcase/(?P<slug>[^/]+)', array(
 			'methods'             => WP_REST_Server::READABLE,
 			'callback'            => array( $this, 'handle_get_showcase' ),
 			'permission_callback' => '__return_true',
 		) );
 
-		register_rest_route( self::NAMESPACE, '/showcase/(?P<slug>[a-zA-Z0-9_-]+)/bid', array(
+		register_rest_route( self::NAMESPACE, '/showcase/(?P<slug>[^/]+)/bid', array(
 			'methods'             => WP_REST_Server::CREATABLE,
 			'callback'            => array( $this, 'handle_submit_show_bid' ),
 			'permission_callback' => '__return_true',
@@ -905,7 +905,7 @@ class Card_Vault_API {
 	 * Handle GET /showcase/:slug.
 	 */
 	public function handle_get_showcase( $request ) {
-		$slug = $request->get_param( 'slug' );
+		$slug = rawurldecode( (string) $request->get_param( 'slug' ) );
 		if ( empty( $slug ) ) {
 			return new WP_REST_Response( array( 'success' => false, 'error' => 'Showcase slug required.' ), 400 );
 		}
@@ -931,7 +931,7 @@ class Card_Vault_API {
 	 * Handle POST /showcase/:slug/bid.
 	 */
 	public function handle_submit_show_bid( $request ) {
-		$slug = $request->get_param( 'slug' );
+		$slug = rawurldecode( (string) $request->get_param( 'slug' ) );
 		$params = $request->get_json_params();
 		$params['showcaseSlug'] = $slug;
 

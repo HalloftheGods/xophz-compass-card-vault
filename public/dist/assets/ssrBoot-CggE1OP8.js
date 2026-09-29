@@ -1,0 +1,1 @@
+import{I as e,ht as t,pt as n,ut as r}from"./runtime-core.esm-bundler-Dd7d5I7Z.js";function i(){let i=n(!1);return e(()=>{window.requestAnimationFrame(()=>{i.value=!0})}),{ssrBootStyles:t(()=>i.value?void 0:{transition:`none !important`}),isBooted:r(i)}}export{i as t};

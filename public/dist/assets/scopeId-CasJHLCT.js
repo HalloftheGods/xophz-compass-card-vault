@@ -1,1 +1,0 @@
-import{N as e}from"./tag-Ck6S6NXt.js";function t(){let t=e(`useScopeId`).vnode.scopeId;return{scopeId:t?{[t]:``}:void 0}}export{t};
