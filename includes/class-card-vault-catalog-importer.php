@@ -394,7 +394,8 @@ class Card_Vault_Catalog_Importer {
 
 				$image_url    = isset( $cols['imageUrl'] ) ? trim( (string) ( $row[ $cols['imageUrl'] ] ?? '' ) ) : '';
 				if ( ! empty( $image_url ) ) {
-					$image_url = preg_replace( '/_200w\.jpg$/i', '_1000w.jpg', $image_url );
+					// `_1000w.jpg` was retired by TCGPlayer (403 AccessDenied); 400w is the largest served.
+					$image_url = preg_replace( '/_(?:200|1000)w\.jpg$/i', '_400w.jpg', $image_url );
 					$image_url = preg_replace( '/fit-in\/\d+x\d+\//i', 'fit-in/1000x1000/', $image_url );
 				}
 				$tcg_url      = isset( $cols['url'] ) ? trim( (string) ( $row[ $cols['url'] ] ?? '' ) ) : '';

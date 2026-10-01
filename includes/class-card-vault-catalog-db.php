@@ -170,14 +170,16 @@ class Card_Vault_Catalog_DB {
 
 	/**
 	 * Normalize card record fields before returning to caller.
-	 * Upgrades TCGPlayer 200w thumbnail URLs to 1000w high-resolution.
+	 * Normalizes TCGPlayer thumbnail URLs to the largest variant the CDN still
+	 * serves: `_1000w.jpg` was retired and now answers 403 AccessDenied, so both
+	 * 200w thumbnails and legacy 1000w urls are rewritten to `_400w.jpg`.
 	 *
 	 * @param array $card Raw database card row.
 	 * @return array Normalized card row.
 	 */
 	public static function format_card_row( array $card ): array {
 		if ( ! empty( $card['image_url'] ) ) {
-			$card['image_url'] = preg_replace( '/_200w\.jpg$/i', '_1000w.jpg', $card['image_url'] );
+			$card['image_url'] = preg_replace( '/_(?:200|1000)w\.jpg$/i', '_400w.jpg', $card['image_url'] );
 			$card['image_url'] = preg_replace( '/fit-in\/\d+x\d+\//i', 'fit-in/1000x1000/', $card['image_url'] );
 		}
 		return $card;
