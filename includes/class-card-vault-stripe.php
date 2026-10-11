@@ -3,7 +3,7 @@
  * Stripe Payments Bridge & WP Connectors Integration for Card Vault POS.
  *
  * Facilitates Stripe Checkout Session generation, mobile QR tendering,
- * and order reconciliation using credentials from WP Connectors API.
+ * and order reconciliation using credentials from the WP Connectors API.
  *
  * @package    Xophz_Compass_Card_Vault
  * @subpackage Xophz_Compass_Card_Vault/includes
@@ -16,121 +16,22 @@ if ( ! defined( 'WPINC' ) ) {
 class Card_Vault_Stripe {
 
 	/**
-	 * Retrieve Stripe Secret Key from WP Connectors API with ecosystem fallbacks.
+	 * Retrieve the Stripe secret key from the stripe_secret_key connector (Settings > Connectors).
 	 *
 	 * @return string
 	 */
 	public static function get_secret_key(): string {
-		if ( function_exists( 'wp_get_connectors' ) ) {
-			$connectors = wp_get_connectors();
-			if ( ! empty( $connectors['stripe_secret_key']['authentication']['setting_name'] ) ) {
-				$key = get_option( $connectors['stripe_secret_key']['authentication']['setting_name'], '' );
-				if ( ! empty( $key ) ) {
-					return $key;
-				}
-			}
-			if ( ! empty( $connectors['stripe']['authentication']['setting_name'] ) ) {
-				$key = get_option( $connectors['stripe']['authentication']['setting_name'], '' );
-				if ( ! empty( $key ) ) {
-					return $key;
-				}
-			}
-			if ( ! empty( $connectors['stripe']['authentication']['secret_key'] ) ) {
-				$key = get_option( $connectors['stripe']['authentication']['secret_key'], '' );
-				if ( ! empty( $key ) ) {
-					return $key;
-				}
-			}
-			if ( ! empty( $connectors['stripe']['setting_name'] ) ) {
-				$key = get_option( $connectors['stripe']['setting_name'], '' );
-				if ( ! empty( $key ) ) {
-					return $key;
-				}
-			}
-		}
-
-		$fallback_options = array(
-			'compass_stripe_secret_key',
-			'xophz_compass_stripe_secret_key',
-			'stripe_secret_key',
-		);
-
-		foreach ( $fallback_options as $option_name ) {
-			$val = get_option( $option_name, '' );
-			if ( ! empty( $val ) ) {
-				return $val;
-			}
-		}
-
-		if ( defined( 'STRIPE_SECRET_KEY' ) && ! empty( STRIPE_SECRET_KEY ) ) {
-			return STRIPE_SECRET_KEY;
-		}
-
-		if ( ! empty( $_ENV['STRIPE_SECRET_KEY'] ) ) {
-			return $_ENV['STRIPE_SECRET_KEY'];
-		}
-
-		if ( ! empty( getenv( 'STRIPE_SECRET_KEY' ) ) ) {
-			return getenv( 'STRIPE_SECRET_KEY' );
-		}
-
-		return '';
+		return Card_Vault_Connectors::get_key( Card_Vault_Connectors::STRIPE_SECRET_KEY );
 	}
 
 	/**
-	 * Retrieve Stripe Publishable Key from WP Connectors or options.
+	 * Retrieve the Stripe publishable key from the stripe_publishable_key connector.
+	 * It is a public identifier by design; the POS config route hands it to Stripe.js.
 	 *
 	 * @return string
 	 */
 	public static function get_publishable_key(): string {
-		if ( function_exists( 'wp_get_connectors' ) ) {
-			$connectors = wp_get_connectors();
-			if ( ! empty( $connectors['stripe_publishable_key']['authentication']['setting_name'] ) ) {
-				$key = get_option( $connectors['stripe_publishable_key']['authentication']['setting_name'], '' );
-				if ( ! empty( $key ) ) {
-					return $key;
-				}
-			}
-			if ( ! empty( $connectors['stripe']['authentication']['public_key'] ) ) {
-				$key = get_option( $connectors['stripe']['authentication']['public_key'], '' );
-				if ( ! empty( $key ) ) {
-					return $key;
-				}
-			}
-			if ( ! empty( $connectors['stripe']['authentication']['publishable_key'] ) ) {
-				$key = get_option( $connectors['stripe']['authentication']['publishable_key'], '' );
-				if ( ! empty( $key ) ) {
-					return $key;
-				}
-			}
-		}
-
-		$fallback_options = array(
-			'compass_stripe_publishable_key',
-			'xophz_compass_stripe_publishable_key',
-			'stripe_publishable_key',
-		);
-
-		foreach ( $fallback_options as $option_name ) {
-			$val = get_option( $option_name, '' );
-			if ( ! empty( $val ) ) {
-				return $val;
-			}
-		}
-
-		if ( defined( 'STRIPE_PUBLISHABLE_KEY' ) && ! empty( STRIPE_PUBLISHABLE_KEY ) ) {
-			return STRIPE_PUBLISHABLE_KEY;
-		}
-
-		if ( ! empty( $_ENV['STRIPE_PUBLISHABLE_KEY'] ) ) {
-			return $_ENV['STRIPE_PUBLISHABLE_KEY'];
-		}
-
-		if ( ! empty( getenv( 'STRIPE_PUBLISHABLE_KEY' ) ) ) {
-			return getenv( 'STRIPE_PUBLISHABLE_KEY' );
-		}
-
-		return '';
+		return Card_Vault_Connectors::get_key( Card_Vault_Connectors::STRIPE_PUBLISHABLE_KEY );
 	}
 
 	/**
@@ -268,7 +169,7 @@ class Card_Vault_Stripe {
 			if ( empty( $secret_key ) ) {
 				return new WP_Error(
 					'missing_stripe_key',
-					__( 'Stripe secret key is not configured in Settings -> Connectors UI or STRIPE_SECRET_KEY.', 'xophz-compass-card-vault' ),
+					__( 'Stripe secret key is not configured. Add it under Settings > Connectors (Stripe Secret Key).', 'xophz-compass-card-vault' ),
 					array( 'status' => 500 )
 				);
 			}

@@ -1,6 +1,6 @@
 <?php
 /**
- * WP Connectors integration and Google Gemini API client for optical card scanning and grading.
+ * Google Gemini API client for optical card scanning and grading. The key comes from the core Google connector.
  *
  * @package    Xophz_Compass_Card_Vault
  * @subpackage Xophz_Compass_Card_Vault/includes
@@ -13,51 +13,12 @@ if ( ! defined( 'WPINC' ) ) {
 class Card_Vault_Gemini {
 
 	/**
-	 * Retrieve the official Gemini API key via WP Connectors API with ecosystem fallbacks.
+	 * Retrieve the Gemini API key from the core Google connector (Settings > Connectors).
 	 *
 	 * @return string
 	 */
 	public static function get_api_key() {
-		if ( function_exists( 'wp_get_connectors' ) ) {
-			$connectors = wp_get_connectors();
-			if ( ! empty( $connectors['google']['authentication']['setting_name'] ) ) {
-				$api_key = get_option( $connectors['google']['authentication']['setting_name'], '' );
-				if ( ! empty( $api_key ) ) {
-					return $api_key;
-				}
-			}
-			if ( ! empty( $connectors['google_gemini_api_key']['authentication']['setting_name'] ) ) {
-				$api_key = get_option( $connectors['google_gemini_api_key']['authentication']['setting_name'], '' );
-				if ( ! empty( $api_key ) ) {
-					return $api_key;
-				}
-			}
-		}
-
-		$fallback_keys = array(
-			'connectors_ai_google_api_key',
-			'ai_google_api_key',
-			'compass_gemini_api_key',
-			'xophz_gemini_api_key',
-		);
-		foreach ( $fallback_keys as $k ) {
-			$val = get_option( $k, '' );
-			if ( ! empty( $val ) ) {
-				return $val;
-			}
-		}
-
-		if ( defined( 'GEMINI_API_KEY' ) && ! empty( GEMINI_API_KEY ) ) {
-			return GEMINI_API_KEY;
-		}
-		if ( ! empty( $_ENV['GEMINI_API_KEY'] ) ) {
-			return $_ENV['GEMINI_API_KEY'];
-		}
-		if ( ! empty( getenv( 'GEMINI_API_KEY' ) ) ) {
-			return getenv( 'GEMINI_API_KEY' );
-		}
-
-		return '';
+		return Card_Vault_Connectors::get_key( Card_Vault_Connectors::GOOGLE );
 	}
 
 	/**
@@ -83,7 +44,7 @@ class Card_Vault_Gemini {
 		if ( empty( $api_key ) ) {
 			return new WP_Error(
 				'missing_gemini_key',
-				__( 'Gemini API key is not configured in WP Connectors or environment.', 'xophz-compass-card-vault' ),
+				__( 'Gemini API key is not configured. Add it under Settings > Connectors (Google).', 'xophz-compass-card-vault' ),
 				array( 'status' => 500 )
 			);
 		}
@@ -120,10 +81,13 @@ class Card_Vault_Gemini {
 		$last_error = null;
 
 		foreach ( $models_to_try as $attempt_model ) {
-			$endpoint = "https://generativelanguage.googleapis.com/v1beta/models/{$attempt_model}:generateContent?key={$api_key}";
+			$endpoint = "https://generativelanguage.googleapis.com/v1beta/models/{$attempt_model}:generateContent";
 
 			$response = wp_remote_post( $endpoint, array(
-				'headers' => array( 'Content-Type' => 'application/json' ),
+				'headers' => array(
+					'Content-Type'   => 'application/json',
+					'x-goog-api-key' => $api_key,
+				),
 				'body'    => wp_json_encode( $payload ),
 				'timeout' => 45,
 			) );

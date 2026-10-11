@@ -1421,42 +1421,22 @@ class Card_Vault_API {
 	}
 
 	/**
-	 * Retrieves Turnstile configuration from WP Defender, Cloudflare Turnstile, or environment constants.
+	 * Retrieves the Turnstile configuration from the Cloudflare Turnstile connectors (Settings > Connectors).
+	 * The secret stays server-side; callers hand only the site key to the browser.
 	 *
-	 * @return array|null Associative array with sitekey and secret, or null if Turnstile is not active.
+	 * @return array|null Associative array with sitekey and secret, or null if Turnstile is not configured.
 	 */
 	public static function get_turnstile_config(): ?array {
-		// 1. Check WP Defender settings
-		$def_settings = get_option( 'wd_recaptcha_settings' );
-		if ( is_array( $def_settings ) && ! empty( $def_settings['enabled'] ) ) {
-			$type = $def_settings['active_type'] ?? '';
-			if ( 'turnstile' === $type && ! empty( $def_settings['data_turnstile']['key'] ) ) {
-				return array(
-					'sitekey' => (string) $def_settings['data_turnstile']['key'],
-					'secret'  => (string) ( $def_settings['data_turnstile']['secret'] ?? '' ),
-				);
-			}
+		$sitekey = Card_Vault_Connectors::get_key( Card_Vault_Connectors::TURNSTILE_SITE_KEY );
+		$secret  = Card_Vault_Connectors::get_key( Card_Vault_Connectors::TURNSTILE_SECRET_KEY );
+		if ( '' === $sitekey || '' === $secret ) {
+			return null;
 		}
 
-		// 2. Check Cloudflare Turnstile plugin settings
-		$cf_key    = get_option( 'cfturnstile_key' ) ?: get_option( 'cf_turnstile_site_key' );
-		$cf_secret = get_option( 'cfturnstile_secret' ) ?: get_option( 'cf_turnstile_secret_key' );
-		if ( ! empty( $cf_key ) && ! empty( $cf_secret ) ) {
-			return array(
-				'sitekey' => (string) $cf_key,
-				'secret'  => (string) $cf_secret,
-			);
-		}
-
-		// 3. Check environment constants
-		if ( defined( 'CLOUDFLARE_TURNSTILE_SITE_KEY' ) && defined( 'CLOUDFLARE_TURNSTILE_SECRET_KEY' ) ) {
-			return array(
-				'sitekey' => CLOUDFLARE_TURNSTILE_SITE_KEY,
-				'secret'  => CLOUDFLARE_TURNSTILE_SECRET_KEY,
-			);
-		}
-
-		return null;
+		return array(
+			'sitekey' => $sitekey,
+			'secret'  => $secret,
+		);
 	}
 
 	/**
