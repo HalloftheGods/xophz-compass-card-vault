@@ -3,6 +3,13 @@
 All notable changes to this WordPress plugin submodule will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [2026-10-10]
+
+### Security
+- **Gemini key moved out of the URL (`includes/class-card-vault-gemini.php`)**: Gemini requests send the key in the `x-goog-api-key` header. It is no longer a `?key=` query parameter, so it cannot land in provider, proxy or HTTP debug logs.
+- **One credential resolver (`includes/class-card-vault-connectors.php`)**: Gemini (core `google` connector), Stripe secret (`stripe_secret_key`), Stripe publishable key, and the Cloudflare Turnstile site and secret keys all resolve through `Card_Vault_Connectors::get_key()`, which reads only the connector's declared env var, constant and option. The hand-rolled option, constant, `$_ENV` and `getenv` tiers are deleted, as are the reads of other plugins' Turnstile settings (WP Defender, Cloudflare Turnstile plugin).
+- **New connectors**: `stripe_publishable_key`, `cloudflare_turnstile_site_key` and `cloudflare_turnstile_secret_key` register on `wp_connectors_init`, so they appear under Settings > Connectors.
+
 ## [2026-09-16]
 
 ### Added
