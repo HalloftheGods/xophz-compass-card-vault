@@ -175,12 +175,15 @@ class Card_Vault_API {
 			'permission_callback' => '__return_true',
 		) );
 
+		// Staff only: this route creates orders and completes cash, split and store-credit sales.
 		register_rest_route( self::NAMESPACE, '/pos/checkout', array(
 			'methods'             => WP_REST_Server::CREATABLE,
 			'callback'            => array( $this, 'handle_pos_checkout' ),
-			'permission_callback' => '__return_true',
+			'permission_callback' => array( $this, 'check_dealer_permission' ),
 		) );
 
+		// No login required, so a Stripe success page can call it as well as the POS. It settles only the
+		// POS order that stores this session id, when Stripe confirms its order id, source, amount and currency.
 		register_rest_route( self::NAMESPACE, '/pos/verify-payment', array(
 			'methods'             => WP_REST_Server::CREATABLE,
 			'callback'            => array( $this, 'handle_pos_verify_payment' ),
@@ -1039,7 +1042,8 @@ class Card_Vault_API {
 	}
 
 	/**
-	 * Handle POST /pos/checkout.
+	 * Handle POST /pos/checkout (dealer only). Catalog lines are priced from WooCommerce;
+	 * see Card_Vault_Stripe::create_pos_checkout for what the client may set.
 	 */
 	public function handle_pos_checkout( $request ) {
 		$params = $request->get_json_params();
@@ -1050,7 +1054,7 @@ class Card_Vault_API {
 			), 400 );
 		}
 
-		$result = Card_Vault_Stripe::create_pos_checkout( $params );
+		$result = Card_Vault_Stripe::create_pos_checkout( $params, (bool) $this->check_dealer_permission() );
 		if ( is_wp_error( $result ) ) {
 			return new WP_REST_Response( array(
 				'success' => false,
@@ -1069,7 +1073,7 @@ class Card_Vault_API {
 	}
 
 	/**
-	 * Handle POST /pos/verify-payment.
+	 * Handle POST /pos/verify-payment. Returns 409 when the session is not bound to the order.
 	 */
 	public function handle_pos_verify_payment( $request ) {
 		$params     = $request->get_json_params();
