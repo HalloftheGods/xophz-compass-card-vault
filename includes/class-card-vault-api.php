@@ -1476,15 +1476,23 @@ class Card_Vault_API {
 			$rest_route = (string) $_SERVER['REQUEST_URI'];
 		}
 
-		$is_public_auth_route = strpos( $rest_route, '/' . self::NAMESPACE . '/auth/login' ) !== false ||
-		                        strpos( $rest_route, '/' . self::NAMESPACE . '/auth/register' ) !== false;
-		$is_auth_route        = strpos( $rest_route, '/' . self::NAMESPACE . '/auth/' ) !== false;
+		// Reduce to the exact route: drop the query string and everything before the namespace.
+		$rest_route = (string) strtok( $rest_route, '?' );
+		$ns_pos     = strpos( $rest_route, '/' . self::NAMESPACE . '/' );
+		$route      = false === $ns_pos ? '' : untrailingslashit( substr( $rest_route, $ns_pos ) );
 
-		if ( $is_public_auth_route ) {
-			return null;
-		}
+		$auth_routes = array(
+			'/' . self::NAMESPACE . '/auth/login',
+			'/' . self::NAMESPACE . '/auth/register',
+			'/' . self::NAMESPACE . '/auth/me',
+			'/' . self::NAMESPACE . '/auth/logout',
+		);
 
-		if ( $is_auth_route && is_wp_error( $error ) && $error->get_error_code() === 'rest_cookie_invalid_nonce' ) {
+		if ( in_array( $route, $auth_routes, true ) && is_wp_error( $error ) && 'rest_cookie_invalid_nonce' === $error->get_error_code() ) {
+			// A bad nonce must never keep the cookie user: core leaves that user set, so a
+			// forged cross-origin request would otherwise run as them. Answer as a guest.
+			// Any other error (for example a block from a security plugin) is returned unchanged.
+			wp_set_current_user( 0 );
 			return null;
 		}
 
@@ -1669,6 +1677,15 @@ class Card_Vault_API {
 	 * @return WP_REST_Response
 	 */
 	public function handle_auth_register( $request ) {
+		// Core "Anyone can register" (users_can_register) is the switch the admin controls,
+		// including through the Card Vault community setting. Closed means no new accounts.
+		if ( ! get_option( 'users_can_register' ) ) {
+			return new WP_REST_Response( array(
+				'success' => false,
+				'error'   => __( 'Registration is currently closed.', 'xophz-compass-card-vault' ),
+			), 403 );
+		}
+
 		$params   = $request->get_json_params();
 		$username = isset( $params['username'] ) ? trim( (string) $params['username'] ) : '';
 		$email    = isset( $params['email'] ) ? trim( (string) $params['email'] ) : '';

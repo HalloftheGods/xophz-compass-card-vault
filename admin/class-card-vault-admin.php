@@ -230,13 +230,19 @@ class Card_Vault_Admin {
 		// Sync community options when settings page is saved
 		if ( isset( $_POST['option_page'] ) && 'xophz_compass_card_vault_options' === $_POST['option_page'] && check_admin_referer( 'xophz_compass_card_vault_options-options' ) ) {
 			if ( class_exists( 'Card_Vault_Community' ) ) {
-				Card_Vault_Community::update_settings( array(
-					'allow_community_vaults'     => ! empty( $_POST['xophz_compass_card_vault_allow_community'] ),
+				// The checkbox mirrors core users_can_register. Only pass the flag when the admin
+				// actually toggled it, because update_settings writes users_can_register whenever the key is set.
+				$community_settings = array(
 					'min_consignment_card_value' => isset( $_POST['xophz_compass_card_vault_min_intake_value'] ) ? (float) $_POST['xophz_compass_card_vault_min_intake_value'] : 10.0,
 					'store_credit_bonus_percent' => isset( $_POST['xophz_compass_card_vault_store_credit_bonus'] ) ? (float) $_POST['xophz_compass_card_vault_store_credit_bonus'] : 15.0,
 					'auto_approve_intake'        => ! empty( $_POST['xophz_compass_card_vault_auto_approve_intake'] ),
 					'enable_public_showcases'    => ! empty( $_POST['xophz_compass_card_vault_enable_showcases'] ),
-				) );
+				);
+				$requested_registration = ! empty( $_POST['xophz_compass_card_vault_allow_community'] );
+				if ( $requested_registration !== (bool) get_option( 'users_can_register' ) ) {
+					$community_settings['allow_community_vaults'] = $requested_registration;
+				}
+				Card_Vault_Community::update_settings( $community_settings );
 			}
 			return;
 		}
@@ -515,7 +521,7 @@ class Card_Vault_Admin {
 					</tr>
 					<?php
 					$comm_settings = class_exists( 'Card_Vault_Community' ) ? Card_Vault_Community::get_settings() : array();
-					$allow_comm = $comm_settings['allow_community_vaults'] ?? false;
+					$allow_comm = (bool) get_option( 'users_can_register' );
 					$min_val = $comm_settings['min_consignment_card_value'] ?? 10.0;
 					$bonus_pct = $comm_settings['store_credit_bonus_percent'] ?? 15.0;
 					$auto_appr = $comm_settings['auto_approve_intake'] ?? false;
