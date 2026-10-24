@@ -695,10 +695,7 @@ class Card_Vault_API {
 			// Find consignor linked to current user
 			$consignor = Card_Vault_Consignments::get_consignor_by_user_id( $user->ID );
 			if ( ! $consignor && ! empty( $user->user_email ) ) {
-				$matches = Card_Vault_Consignments::get_consignors( array( 'search' => $user->user_email ) );
-				if ( ! empty( $matches ) ) {
-					$consignor = $matches[0];
-				}
+				$consignor = Card_Vault_Consignments::get_consignor_by_email( $user->user_email, $user->ID );
 			}
 		}
 
