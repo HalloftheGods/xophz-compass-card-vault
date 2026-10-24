@@ -25,7 +25,62 @@ class Card_Vault_Image_Cache {
 	const CACHE_SUBDIR = 'card-vault-cache/images';
 	const WEBP_QUALITY = 85;
 	const WEBP_THUMB_QUALITY = 78;
-	const MAX_DOWNLOAD_SIZE_BYTES = 10485760; // 10MB limit
+	const MAX_DOWNLOAD_SIZE_BYTES = 5242880; // 5MB limit (enforced while streaming the download)
+	const CACHE_TTL_SECONDS = 2592000; // 30 days: older cached files are treated as not cached and re-fetched
+
+	/**
+	 * Hosts the catalog image URLs come from. Extendable with the
+	 * `card_vault_image_hosts` filter. Only https URLs on these exact hosts are fetched.
+	 *
+	 * @return string[] Lowercase hostnames.
+	 */
+	public static function get_allowed_hosts(): array {
+		$hosts = array(
+			'tcgplayer-cdn.tcgplayer.com',
+			'product-images.tcgplayer.com',
+			'images.pokemontcg.io',
+			'assets.tcgdex.net',
+		);
+		$hosts = apply_filters( 'card_vault_image_hosts', $hosts );
+		return array_map( 'strtolower', array_filter( (array) $hosts, 'is_string' ) );
+	}
+
+	/**
+	 * Whether a URL may be fetched: https, no credentials, default port, allowlisted host.
+	 *
+	 * @param string $url Remote URL.
+	 * @return bool
+	 */
+	public static function is_allowed_image_url( string $url ): bool {
+		$parts = wp_parse_url( trim( $url ) );
+		if ( ! is_array( $parts ) || empty( $parts['host'] ) || empty( $parts['scheme'] ) ) {
+			return false;
+		}
+		if ( strtolower( $parts['scheme'] ) !== 'https' ) {
+			return false;
+		}
+		if ( isset( $parts['user'] ) || isset( $parts['pass'] ) ) {
+			return false;
+		}
+		if ( isset( $parts['port'] ) && (int) $parts['port'] !== 443 ) {
+			return false;
+		}
+		return in_array( strtolower( $parts['host'] ), self::get_allowed_hosts(), true );
+	}
+
+	/**
+	 * True when a cached file exists, is non-empty and is younger than the TTL.
+	 *
+	 * @param string $path Absolute file path.
+	 * @return bool
+	 */
+	private static function is_fresh_file( string $path ): bool {
+		if ( ! file_exists( $path ) || filesize( $path ) <= 0 ) {
+			return false;
+		}
+		$mtime = filemtime( $path );
+		return $mtime !== false && ( time() - $mtime ) < self::CACHE_TTL_SECONDS;
+	}
 
 	/**
 	 * Ensure directory structure and security/caching headers are initialized.
@@ -165,20 +220,20 @@ class Card_Vault_Image_Cache {
 	 */
 	public static function is_cached( string $card_id, int $group_id = 0, bool $is_thumbnail = false ): bool {
 		$webp_path = self::get_file_path( $card_id, $group_id, 'webp', $is_thumbnail );
-		$has_webp  = file_exists( $webp_path ) && filesize( $webp_path ) > 0;
+		$has_webp  = self::is_fresh_file( $webp_path );
 		if ( $has_webp ) {
 			return true;
 		}
 
 		// Fallback check for uncompressed png/jpg in case webp was unavailable
 		$png_path = self::get_file_path( $card_id, $group_id, 'png', $is_thumbnail );
-		$has_png  = file_exists( $png_path ) && filesize( $png_path ) > 0;
+		$has_png  = self::is_fresh_file( $png_path );
 		if ( $has_png ) {
 			return true;
 		}
 
 		$jpg_path = self::get_file_path( $card_id, $group_id, 'jpg', $is_thumbnail );
-		return file_exists( $jpg_path ) && filesize( $jpg_path ) > 0;
+		return self::is_fresh_file( $jpg_path );
 	}
 
 	/**
@@ -191,19 +246,19 @@ class Card_Vault_Image_Cache {
 	 */
 	public static function get_cached_image_url( string $card_id, int $group_id = 0, bool $is_thumbnail = false ): ?string {
 		$webp_path = self::get_file_path( $card_id, $group_id, 'webp', $is_thumbnail );
-		$has_webp  = file_exists( $webp_path ) && filesize( $webp_path ) > 0;
+		$has_webp  = self::is_fresh_file( $webp_path );
 		if ( $has_webp ) {
 			return self::get_file_url( $card_id, $group_id, 'webp', $is_thumbnail );
 		}
 
 		$png_path = self::get_file_path( $card_id, $group_id, 'png', $is_thumbnail );
-		$has_png  = file_exists( $png_path ) && filesize( $png_path ) > 0;
+		$has_png  = self::is_fresh_file( $png_path );
 		if ( $has_png ) {
 			return self::get_file_url( $card_id, $group_id, 'png', $is_thumbnail );
 		}
 
 		$jpg_path = self::get_file_path( $card_id, $group_id, 'jpg', $is_thumbnail );
-		$has_jpg  = file_exists( $jpg_path ) && filesize( $jpg_path ) > 0;
+		$has_jpg  = self::is_fresh_file( $jpg_path );
 		if ( $has_jpg ) {
 			return self::get_file_url( $card_id, $group_id, 'jpg', $is_thumbnail );
 		}
@@ -235,18 +290,19 @@ class Card_Vault_Image_Cache {
 			return $existing_url;
 		}
 
-		// Stage 2: Validate URL syntax and protocol
-		$is_valid_url = (bool) wp_http_validate_url( $trimmed_url );
+		// Stage 2: Only https URLs on allowlisted image hosts are fetched.
+		$is_valid_url = self::is_allowed_image_url( $trimmed_url ) && (bool) wp_http_validate_url( $trimmed_url );
 		if ( ! $is_valid_url ) {
 			return '';
 		}
 
-		// Stage 3: Fetch remote image stream
-		$response = wp_remote_get( $trimmed_url, array(
-			'timeout'     => 15,
-			'redirection' => 5,
-			'sslverify'   => true,
-			'user-agent'  => 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) CardVaultCache/1.0',
+		// Stage 3: Fetch with the safe client (rejects private/loopback targets), no redirects, capped body.
+		$response = wp_safe_remote_get( $trimmed_url, array(
+			'timeout'             => 15,
+			'redirection'         => 0,
+			'sslverify'           => true,
+			'limit_response_size' => self::MAX_DOWNLOAD_SIZE_BYTES + 1,
+			'user-agent'          => 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) CardVaultCache/1.0',
 		) );
 
 		$is_error_response = is_wp_error( $response );
@@ -267,7 +323,17 @@ class Card_Vault_Image_Cache {
 			return '';
 		}
 
+		// Stage 4: The body must really be a raster image (the declared Content-Type is not trusted).
 		$content_type = strtolower( (string) wp_remote_retrieve_header( $response, 'content-type' ) );
+		if ( ! str_starts_with( $content_type, 'image/' ) ) {
+			return '';
+		}
+		$image_info = @getimagesizefromstring( $raw_body );
+		$real_mime  = is_array( $image_info ) ? (string) ( $image_info['mime'] ?? '' ) : '';
+		if ( ! in_array( $real_mime, array( 'image/webp', 'image/png', 'image/jpeg' ), true ) ) {
+			return '';
+		}
+
 		$target_webp_path = self::get_file_path( $card_id, $group_id, 'webp', $is_thumbnail );
 		$target_dir       = dirname( $target_webp_path );
 
@@ -277,7 +343,7 @@ class Card_Vault_Image_Cache {
 		}
 
 		// Path A: Remote asset is ALREADY WebP (e.g. TCGdex). Save directly with zero transcoding overhead.
-		$is_already_webp = str_contains( $content_type, 'image/webp' ) || str_ends_with( strtolower( $trimmed_url ), '.webp' );
+		$is_already_webp = $real_mime === 'image/webp';
 		if ( $is_already_webp ) {
 			@file_put_contents( $target_webp_path, $raw_body );
 			return self::get_file_url( $card_id, $group_id, 'webp', $is_thumbnail );
@@ -315,10 +381,8 @@ class Card_Vault_Image_Cache {
 
 		// Path C: Graceful fallback for hosting environments lacking WebP encoders.
 		// Save original image format so card rendering never fails.
-		$detected_ext = 'png';
-		if ( str_contains( $content_type, 'jpeg' ) || str_contains( $content_type, 'jpg' ) ) {
-			$detected_ext = 'jpg';
-		}
+		// Only reached for bytes already verified as PNG or JPEG above.
+		$detected_ext = $real_mime === 'image/jpeg' ? 'jpg' : 'png';
 
 		$fallback_path = self::get_file_path( $card_id, $group_id, $detected_ext, $is_thumbnail );
 		@copy( $temp_file, $fallback_path );

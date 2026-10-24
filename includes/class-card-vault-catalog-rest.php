@@ -71,8 +71,6 @@ class Card_Vault_Catalog_REST {
 					'callback'            => array( __CLASS__, 'handle_card_image' ),
 					'permission_callback' => '__return_true',
 					'args'                => array(
-						'fallback_url' => array( 'sanitize_callback' => 'esc_url_raw' ),
-						'group'        => array( 'sanitize_callback' => 'absint' ),
 						'thumb'        => array( 'sanitize_callback' => 'rest_sanitize_boolean' ),
 						'redirect'     => array( 'sanitize_callback' => 'rest_sanitize_boolean' ),
 					),
@@ -589,29 +587,24 @@ class Card_Vault_Catalog_REST {
 	 */
 	public static function handle_card_image( WP_REST_Request $request ) {
 		$id           = sanitize_text_field( (string) $request->get_param( 'id' ) );
-		$fallback_url = esc_url_raw( (string) ( $request->get_param( 'fallback_url' ) ?: '' ) );
-		$group_id     = absint( $request->get_param( 'group' ) ?: 0 );
 		$thumb        = (bool) $request->get_param( 'thumb' );
 		$redirect     = (bool) $request->get_param( 'redirect' );
 
-		// 1. Resolve group_id and fallback remote URL from SQLite catalog if omitted
-		$needs_resolution = empty( $fallback_url ) || $group_id <= 0;
-		if ( $needs_resolution ) {
-			$card = Card_Vault_Catalog_DB::get_card_by_id( $id );
-			$is_numeric_fallback = ! $card && is_numeric( $id );
-			if ( $is_numeric_fallback ) {
-				$card = Card_Vault_Catalog_DB::get_card_by_tcgplayer_id( (int) $id );
-			}
-			if ( $card ) {
-				$needs_group = $group_id <= 0 && ! empty( $card['group_id'] );
-				if ( $needs_group ) {
-					$group_id = (int) $card['group_id'];
-				}
-				$needs_url = empty( $fallback_url ) && ! empty( $card['image_url'] );
-				if ( $needs_url ) {
-					$fallback_url = $card['image_url'];
-				}
-			}
+		// 1. This route is public: the card must exist in the catalog, and the image source
+		// and cache key come from the catalog row only. Request-supplied URLs and groups are ignored.
+		$card = Card_Vault_Catalog_DB::get_card_by_id( $id );
+		$is_numeric_fallback = ! $card && is_numeric( $id );
+		if ( $is_numeric_fallback ) {
+			$card = Card_Vault_Catalog_DB::get_card_by_tcgplayer_id( (int) $id );
+		}
+		if ( ! $card ) {
+			return new WP_Error( 'card_not_found', __( 'Card not found in the catalog.', 'xophz-compass-card-vault' ), array( 'status' => 404 ) );
+		}
+		$id           = sanitize_text_field( (string) ( $card['id'] ?? $id ) );
+		$group_id     = absint( $card['group_id'] ?? 0 );
+		$fallback_url = ! empty( $card['image_url'] ) ? esc_url_raw( (string) $card['image_url'] ) : '';
+		if ( ! Card_Vault_Image_Cache::is_allowed_image_url( $fallback_url ) ) {
+			$fallback_url = '';
 		}
 
 		// 2. Check if already cached
@@ -619,7 +612,7 @@ class Card_Vault_Catalog_REST {
 		$has_cached = ! empty( $cached_url );
 		if ( $has_cached ) {
 			if ( $redirect ) {
-				wp_redirect( $cached_url, 302 );
+				wp_redirect( $cached_url, 302 ); // phpcs:ignore WordPress.Security.SafeRedirect -- server-built uploads URL
 				exit;
 			}
 			return rest_ensure_response( array(
@@ -641,7 +634,7 @@ class Card_Vault_Catalog_REST {
 		$has_transcoded = ! empty( $new_cached_url );
 		if ( $has_transcoded ) {
 			if ( $redirect ) {
-				wp_redirect( $new_cached_url, 302 );
+				wp_redirect( $new_cached_url, 302 ); // phpcs:ignore WordPress.Security.SafeRedirect -- server-built uploads URL
 				exit;
 			}
 			return rest_ensure_response( array(
@@ -652,9 +645,9 @@ class Card_Vault_Catalog_REST {
 			) );
 		}
 
-		// 5. Fallback to remote URL if transcoding/caching was not possible
+		// 5. Fall back to the catalog's own (allowlisted) image URL if caching was not possible
 		if ( $redirect ) {
-			wp_redirect( $fallback_url, 302 );
+			wp_redirect( $fallback_url, 302 ); // phpcs:ignore WordPress.Security.SafeRedirect -- allowlisted https catalog host only
 			exit;
 		}
 
