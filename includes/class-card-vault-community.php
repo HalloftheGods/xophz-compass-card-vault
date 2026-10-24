@@ -216,32 +216,52 @@ class Card_Vault_Community {
 	}
 
 	/**
-	 * Retrieve a public showcase payload by collector username or ID.
+	 * Resolve a showcase slug to a user that has at least one public showcase item.
 	 *
-	 * @param string $slug Username, user_nicename, or numeric user ID.
+	 * Matches user_nicename or user_login only. Numeric user IDs and any
+	 * administrator fallback are deliberately not resolved, so the slug cannot be
+	 * used to enumerate accounts. Returns null when nothing public exists.
+	 *
+	 * @param string $slug Username or user_nicename.
+	 * @return WP_User|null
+	 */
+	private static function resolve_showcase_user( $slug ) {
+		global $wpdb;
+		$slug = is_string( $slug ) ? trim( $slug ) : '';
+		if ( '' === $slug ) {
+			return null;
+		}
+
+		$user = get_user_by( 'slug', sanitize_title( $slug ) );
+		if ( ! $user ) {
+			$user = get_user_by( 'login', sanitize_user( $slug ) );
+		}
+		if ( ! $user ) {
+			return null;
+		}
+
+		$table      = $wpdb->prefix . 'xophz_vault_collector_items';
+		$has_public = $wpdb->get_var(
+			$wpdb->prepare(
+				"SELECT 1 FROM $table WHERE wp_user_id = %d AND is_public_showcase = 1 LIMIT 1",
+				$user->ID
+			)
+		);
+
+		return $has_public ? $user : null;
+	}
+
+	/**
+	 * Retrieve a public showcase payload by collector username.
+	 *
+	 * @param string $slug Username or user_nicename.
 	 * @return array|WP_Error
 	 */
 	public static function get_public_showcase( $slug ) {
 		global $wpdb;
 		$table = $wpdb->prefix . 'xophz_vault_collector_items';
 
-		$user = null;
-		if ( is_numeric( $slug ) ) {
-			$user = get_user_by( 'id', (int) $slug );
-		}
-		if ( ! $user ) {
-			$user = get_user_by( 'slug', sanitize_title( $slug ) );
-		}
-		if ( ! $user ) {
-			$user = get_user_by( 'login', sanitize_user( $slug ) );
-		}
-
-		if ( ! $user && ( 'demo' === $slug || empty( $slug ) ) ) {
-			$admins = get_users( array( 'role' => 'administrator', 'number' => 1 ) );
-			if ( ! empty( $admins ) ) {
-				$user = $admins[0];
-			}
-		}
+		$user = self::resolve_showcase_user( $slug );
 
 		if ( ! $user ) {
 			return new WP_Error( 'showcase_not_found', __( 'Collector showcase not found.', 'xophz-compass-card-vault' ), array( 'status' => 404 ) );
@@ -292,7 +312,7 @@ class Card_Vault_Community {
 			$wpdb->prepare(
 				"SELECT bid_code, vendor_name, vendor_booth, offer_type, offer_cash_amount, bid_type, target_item_ids, created_at 
 				FROM $bids_table 
-				WHERE collector_user_id = %d AND status != 'declined'
+				WHERE collector_user_id = %d AND status IN ('accepted', 'countered')
 				ORDER BY offer_cash_amount DESC 
 				LIMIT 10",
 				$user->ID
@@ -304,7 +324,6 @@ class Card_Vault_Community {
 			'collector' => array(
 				'id'          => $user->ID,
 				'displayName' => $user->display_name,
-				'userLogin'   => $user->user_login,
 			),
 			'summary' => array(
 				'totalCards'  => $total_card_count,
@@ -333,7 +352,8 @@ class Card_Vault_Community {
 		}
 
 		$settings = self::get_settings();
-		$split_rate = isset( $payload['agreedSplitRate'] ) ? (float) $payload['agreedSplitRate'] : (float) $settings['default_consignor_split'];
+		// The collector does not set the split: only the dealer-configured default applies.
+		$split_rate = max( 1.0, min( 99.0, (float) $settings['default_consignor_split'] ) );
 		$payout_pref = isset( $payload['payoutPreference'] ) ? sanitize_text_field( $payload['payoutPreference'] ) : 'consignment';
 		$dropoff_type = isset( $payload['dropoffType'] ) ? sanitize_text_field( $payload['dropoffType'] ) : 'counter';
 		$notes = isset( $payload['notes'] ) ? sanitize_textarea_field( $payload['notes'] ) : '';
@@ -396,8 +416,10 @@ class Card_Vault_Community {
 			$card = isset( $item['card'] ) && is_array( $item['card'] ) ? $item['card'] : array();
 			$card_id = ! empty( $item['cardId'] ) ? sanitize_text_field( $item['cardId'] ) : ( ! empty( $card['id'] ) ? sanitize_text_field( $card['id'] ) : '' );
 			$card_name = ! empty( $card['name'] ) ? sanitize_text_field( $card['name'] ) : ( ! empty( $item['cardName'] ) ? sanitize_text_field( $item['cardName'] ) : 'Unknown Card' );
-			$set_name = ! empty( $card['setName'] ) ? sanitize_text_field( $card['setName'] ) : '';
-			$card_number = ! empty( $card['number'] ) ? sanitize_text_field( $card['number'] ) : '';
+			$set_raw = ! empty( $card['setName'] ) ? $card['setName'] : ( $item['setName'] ?? '' );
+			$num_raw = ! empty( $card['number'] ) ? $card['number'] : ( $item['cardNumber'] ?? '' );
+			$set_name = is_scalar( $set_raw ) ? sanitize_text_field( (string) $set_raw ) : '';
+			$card_number = is_scalar( $num_raw ) ? sanitize_text_field( (string) $num_raw ) : '';
 			$condition = ! empty( $item['condition'] ) ? sanitize_text_field( $item['condition'] ) : 'NM';
 			$quantity = isset( $item['quantity'] ) ? max( 1, (int) $item['quantity'] ) : 1;
 			$is_foil = ! empty( $item['isFoil'] ) ? 1 : 0;
@@ -549,9 +571,18 @@ class Card_Vault_Community {
 			$appraised_cond = ! empty( $item_data['appraisedCondition'] ) ? sanitize_text_field( $item_data['appraisedCondition'] ) : null;
 			$appraised_val = isset( $item_data['appraisedValue'] ) ? (float) $item_data['appraisedValue'] : 0.0;
 			$status = ! empty( $item_data['status'] ) ? sanitize_text_field( $item_data['status'] ) : 'approved';
-			$qty = isset( $item_data['quantity'] ) ? (int) $item_data['quantity'] : 1;
 
-			$total_appraised += ( $appraised_val * $qty );
+			// Quantity comes from the stored line, not the payload; lines outside this batch are skipped.
+			$stored_qty = $wpdb->get_var(
+				$wpdb->prepare( "SELECT quantity FROM $items_table WHERE id = %d AND batch_id = %d", $item_id, $batch_id )
+			);
+			if ( null === $stored_qty ) {
+				continue;
+			}
+
+			if ( 'rejected' !== $status ) {
+				$total_appraised += ( $appraised_val * max( 1, (int) $stored_qty ) );
+			}
 
 			$wpdb->update(
 				$items_table,
@@ -568,6 +599,7 @@ class Card_Vault_Community {
 
 		$new_status = ! empty( $payload['status'] ) ? sanitize_text_field( $payload['status'] ) : 'appraised';
 		$agreed_split = isset( $payload['agreedSplitRate'] ) ? (float) $payload['agreedSplitRate'] : (float) $batch['agreed_split_rate'];
+		$agreed_split = max( 1.0, min( 99.0, $agreed_split ) );
 
 		$wpdb->update(
 			$batches_table,
@@ -613,27 +645,23 @@ class Card_Vault_Community {
 				$cond = ! empty( $item['appraised_condition'] ) ? $item['appraised_condition'] : $item['claimed_condition'];
 				$price = $item['appraised_value'] !== null && (float) $item['appraised_value'] > 0 ? (float) $item['appraised_value'] : (float) $item['claimed_value'];
 
-				$mock_inventory_item = array(
-					'id'            => 'intake_' . $item['id'],
-					'cardId'        => $item['card_id'],
-					'card'          => array(
-						'id'       => $item['card_id'],
-						'name'     => $item['card_name'],
-						'setName'  => $item['set_name'],
-						'number'   => $item['card_number'],
-						'rarity'   => 'Consigned',
-						'images'   => array(),
-					),
-					'condition'     => $cond,
-					'quantity'      => (int) $item['quantity'],
-					'isFoil'        => (bool) $item['is_foil'],
-					'askingPrice'   => $price,
-					'consignorId'   => $batch['consignor_id'],
-					'consignorName' => 'Consignor #' . $batch['wp_user_id'],
-					'splitRate'     => (float) $batch['agreed_split_rate'],
+				// Keys are the flat shape Card_Vault_WC_Sync::sync_inventory_item() reads.
+				$sync_item = array(
+					'id'                 => 'intake_' . $item['id'],
+					'cardId'             => $item['card_id'],
+					'cardName'           => $item['card_name'],
+					'setName'            => $item['set_name'],
+					'cardNumber'         => $item['card_number'],
+					'rarity'             => 'Consigned',
+					'condition'          => $cond,
+					'quantity'           => (int) $item['quantity'],
+					'isFoil'             => (bool) $item['is_foil'],
+					'askingPrice'        => $price,
+					'consignorId'        => $batch['consignor_id'],
+					'consignorSplitRate' => (float) $batch['agreed_split_rate'],
 				);
 
-				$wc_product_id = Card_Vault_WC_Sync::sync_single_item( $mock_inventory_item );
+				$wc_product_id = Card_Vault_WC_Sync::sync_inventory_item( $sync_item );
 				if ( $wc_product_id && ! is_wp_error( $wc_product_id ) ) {
 					$wpdb->update(
 						$items_table,
@@ -681,35 +709,36 @@ class Card_Vault_Community {
 			return new WP_Error( 'missing_fields', __( 'Vendor or buyer name is required.', 'xophz-compass-card-vault' ), array( 'status' => 400 ) );
 		}
 
-		$collector_user_id = 0;
-		if ( ! empty( $payload['collectorUserId'] ) ) {
-			$collector_user_id = (int) $payload['collectorUserId'];
-		} else {
-			$user = get_user_by( 'slug', $showcase_slug );
-			if ( ! $user && is_numeric( $showcase_slug ) ) {
-				$user = get_user_by( 'id', (int) $showcase_slug );
-			}
-			if ( ! $user && ! empty( $showcase_slug ) ) {
-				$user = get_user_by( 'login', sanitize_user( $showcase_slug ) );
-			}
-			if ( $user ) {
-				$collector_user_id = $user->ID;
-			} elseif ( is_user_logged_in() ) {
-				$collector_user_id = get_current_user_id();
-			} else {
-				$admins = get_users( array( 'role' => 'administrator', 'number' => 1 ) );
-				if ( ! empty( $admins ) ) {
-					$collector_user_id = $admins[0]->ID;
-				}
-			}
-		}
+		// The target comes only from the slug (payload collectorUserId is ignored), and only
+		// users with a public showcase can receive bids.
+		$target_user       = self::resolve_showcase_user( $showcase_slug );
+		$collector_user_id = $target_user ? (int) $target_user->ID : 0;
 
 		if ( ! $collector_user_id ) {
 			return new WP_Error( 'invalid_collector', __( 'Target collector not found.', 'xophz-compass-card-vault' ), array( 'status' => 404 ) );
 		}
 
+		// Throttle: at most 5 bids per 10 minutes per client address and target. Best effort;
+		// the address is REMOTE_ADDR, which is a shared proxy address behind some setups.
+		$remote_addr  = isset( $_SERVER['REMOTE_ADDR'] ) ? sanitize_text_field( wp_unslash( $_SERVER['REMOTE_ADDR'] ) ) : '';
+		$throttle_key = 'cv_bid_' . md5( $remote_addr . '|' . $collector_user_id );
+		$bid_count    = (int) get_transient( $throttle_key );
+		if ( $bid_count >= 5 ) {
+			return new WP_Error( 'bid_rate_limited', __( 'Too many bids submitted. Please try again later.', 'xophz-compass-card-vault' ), array( 'status' => 429 ) );
+		}
+		set_transient( $throttle_key, $bid_count + 1, 10 * MINUTE_IN_SECONDS );
+
 		$bid_type = ! empty( $payload['bidType'] ) ? sanitize_text_field( $payload['bidType'] ) : 'single_card';
-		$target_item_ids = isset( $payload['targetItemIds'] ) && is_array( $payload['targetItemIds'] ) ? wp_json_encode( $payload['targetItemIds'] ) : null;
+		$target_item_ids = null;
+		if ( isset( $payload['targetItemIds'] ) && is_array( $payload['targetItemIds'] ) ) {
+			$clean_ids = array();
+			foreach ( array_slice( $payload['targetItemIds'], 0, 500 ) as $target_id ) {
+				if ( is_scalar( $target_id ) ) {
+					$clean_ids[] = substr( sanitize_text_field( (string) $target_id ), 0, 64 );
+				}
+			}
+			$target_item_ids = wp_json_encode( $clean_ids );
+		}
 		$target_card_summary = ! empty( $payload['targetCardSummary'] ) ? sanitize_text_field( $payload['targetCardSummary'] ) : '';
 
 		$offer_type = ! empty( $payload['offerType'] ) ? sanitize_text_field( $payload['offerType'] ) : 'cash';
