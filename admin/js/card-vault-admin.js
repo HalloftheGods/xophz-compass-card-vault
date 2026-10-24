@@ -146,7 +146,7 @@
             payouts.value = payoutsRes.value.data.data;
           }
         } catch (err) {
-          console.warn("[CardVaultAdmin] Live data sync:", err);
+          notify("Could not load Card Vault data. Showing what was already loaded.");
         } finally {
           isLoadingData.value = false;
         }
@@ -679,7 +679,9 @@
     try {
       CardVaultAdmin.render = window.Compass.Vue.compile(CardVaultAdmin.template);
     } catch (e) {
-      console.warn("[CardVaultAdmin] Pre-compile template:", e);
+      // Leave render unset so Vue compiles the template at mount time and reports the real error.
+      CardVaultAdmin.render = undefined;
+      CardVaultAdmin.precompileError = e;
     }
   }
 
