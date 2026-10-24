@@ -912,6 +912,21 @@ class Card_Vault_Catalog_DB {
 		}
 
 		self::migrate_printing_key( $table );
+		self::repair_empty_string_columns( $table );
+	}
+
+	/**
+	 * Repair rows written by the old NULL-as-empty-string upsert.
+	 *
+	 * Rows with pricing_source empty and no graded comps are marked tcgcsv; an empty upc becomes NULL.
+	 * Graded prices already zeroed cannot be recovered. Safe to repeat.
+	 *
+	 * @param string $table Cards table name.
+	 */
+	private static function repair_empty_string_columns( string $table ): void {
+		global $wpdb;
+		$wpdb->query( "UPDATE {$table} SET pricing_source = 'tcgcsv' WHERE pricing_source = '' AND psa10_price = 0 AND psa9_price = 0" );
+		$wpdb->query( "UPDATE {$table} SET upc = NULL WHERE upc = ''" );
 	}
 
 	/**
