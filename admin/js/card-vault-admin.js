@@ -125,6 +125,10 @@
             api.get(`${restUrl}xophz-card-vault/v1/payouts`)
           ]);
 
+          if ([summaryRes, consignorsRes, payoutsRes].some((r) => r.status === "rejected")) {
+            notify("Could not load all Card Vault data. Showing what was already loaded.");
+          }
+
           if (summaryRes.status === "fulfilled" && summaryRes.value?.data?.data) {
             const d = summaryRes.value.data.data;
             metrics.value = {
@@ -682,6 +686,7 @@
       // Leave render unset so Vue compiles the template at mount time and reports the real error.
       CardVaultAdmin.render = undefined;
       CardVaultAdmin.precompileError = e;
+      console.error("[CardVaultAdmin] Template pre-compile failed; Vue will retry at mount.", e);
     }
   }
 
