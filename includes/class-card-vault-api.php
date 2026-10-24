@@ -26,14 +26,14 @@ class Card_Vault_API {
 		register_rest_route( self::NAMESPACE, '/scan-card', array(
 			'methods'             => WP_REST_Server::CREATABLE,
 			'callback'            => array( $this, 'handle_scan_card' ),
-			'permission_callback' => '__return_true',
+			'permission_callback' => array( $this, 'check_authenticated_permission' ),
 		) );
 
 		// 2. Optical Grading & Defect Mapping
 		register_rest_route( self::NAMESPACE, '/grade-card', array(
 			'methods'             => WP_REST_Server::CREATABLE,
 			'callback'            => array( $this, 'handle_grade_card' ),
-			'permission_callback' => '__return_true',
+			'permission_callback' => array( $this, 'check_authenticated_permission' ),
 		) );
 
 		// 3. Master Catalog Search
@@ -268,6 +268,63 @@ class Card_Vault_API {
 	}
 
 	/**
+	 * Gate a Gemini-backed request: payload size cap and a per-user, per-IP rate limit.
+	 *
+	 * Guarantees: an oversized payload is rejected before any Gemini call, and one
+	 * user or one IP is limited to the filtered number of AI calls per window.
+	 * Not guaranteed: the counter is a transient read then write, so simultaneous
+	 * requests can slip a few calls past the limit; and it is not a monthly quota
+	 * or a licence entitlement.
+	 *
+	 * @param string[] $images Raw image strings as sent by the client (may carry a data URI header).
+	 * @return WP_REST_Response|null Error response, or null when the request may proceed.
+	 */
+	private function guard_ai_request( $images ) {
+		$max_bytes = (int) apply_filters( 'card_vault_ai_max_image_bytes', 8 * MB_IN_BYTES );
+		$total     = 0;
+		foreach ( $images as $image ) {
+			$total += is_string( $image ) ? strlen( $image ) : 0;
+		}
+		if ( $total > $max_bytes ) {
+			return new WP_REST_Response( array(
+				'error' => 'Image payload is too large.',
+				'code'  => 'payload_too_large',
+			), 413 );
+		}
+
+		$limit  = (int) apply_filters( 'card_vault_ai_rate_limit', 30 );
+		$window = (int) apply_filters( 'card_vault_ai_rate_window', HOUR_IN_SECONDS );
+		if ( $limit < 1 || $window < 1 ) {
+			return null;
+		}
+
+		$ip      = isset( $_SERVER['REMOTE_ADDR'] ) ? sanitize_text_field( wp_unslash( $_SERVER['REMOTE_ADDR'] ) ) : '';
+		$buckets = array(
+			'u' . get_current_user_id(),
+			'ip' . md5( $ip ),
+		);
+		$keys    = array();
+		foreach ( $buckets as $bucket ) {
+			$key   = 'cv_ai_rl_' . $bucket;
+			$count = (int) get_transient( $key );
+			if ( $count >= $limit ) {
+				$response = new WP_REST_Response( array(
+					'error' => 'Too many scan or grade requests. Try again later.',
+					'code'  => 'rate_limited',
+				), 429 );
+				$response->header( 'Retry-After', (string) $window );
+				return $response;
+			}
+			$keys[ $key ] = $count;
+		}
+		foreach ( $keys as $key => $count ) {
+			set_transient( $key, $count + 1, $window );
+		}
+
+		return null;
+	}
+
+	/**
 	 * Permission check for dealer operations.
 	 *
 	 * @return bool
@@ -309,6 +366,11 @@ class Card_Vault_API {
 
 		if ( empty( $image_b64 ) ) {
 			return new WP_REST_Response( array( 'error' => 'No image data provided.' ), 400 );
+		}
+
+		$blocked = $this->guard_ai_request( array( $image_b64 ) );
+		if ( $blocked ) {
+			return $blocked;
 		}
 
 		// Strip data URI header if present
@@ -458,6 +520,11 @@ class Card_Vault_API {
 
 		if ( empty( $front_image ) ) {
 			return new WP_REST_Response( array( 'error' => 'Front card image is required for optical grading.' ), 400 );
+		}
+
+		$blocked = $this->guard_ai_request( array( $front_image, $back_image ) );
+		if ( $blocked ) {
+			return $blocked;
 		}
 
 		$parts = array();
