@@ -1,9 +1,9 @@
 /**
  * Payouts ledger: status filter ("all", "unpaid", "paid") over the loaded payouts, and settlement.
  * markPayoutSettled(id) posts to /payouts/settle and reloads Dealer HQ data through refresh() when the
- * response reports success; a request error shows a toast via notify.
+ * response reports success; a request error or a success:false response shows a toast via notify.
  */
-import { resolveCardVaultRest } from "./card-vault-rest.js";
+import { cardVaultRequest } from "./card-vault-rest.js";
 
 const { ref, computed } = window.Compass.Vue;
 
@@ -20,19 +20,21 @@ export const usePayoutLedger = (props, payouts, notify, refresh) => {
 
   const markPayoutSettled = async (payoutId) => {
     try {
-      const { api, base } = resolveCardVaultRest(props.context);
-      const res = await api.post(`${base}/payouts/settle`, {
+      const res = await cardVaultRequest(props.context, "POST", "/payouts/settle", {
         payout_id: payoutId,
         payment_method: "Cash",
         payment_reference: "Disbursed via Dealer HQ"
       });
 
-      if (res.data?.success) {
+      const isSettled = res.success === true;
+      if (isSettled) {
         notify("Payout record marked as settled.");
         await refresh();
+      } else {
+        notify(res.message || "Payout was not settled.");
       }
     } catch (err) {
-      notify("Failed to settle payout record.");
+      notify(`Failed to settle payout record: ${err.message}`);
     }
   };
 

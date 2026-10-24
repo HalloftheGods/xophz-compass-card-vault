@@ -1,9 +1,10 @@
 /**
  * Dealer HQ data: summary metrics, consignors and payouts from the Card Vault REST routes.
- * fetchAllData() loads all three in parallel. A failed or empty response keeps the values
- * already held (zeros and empty lists before the first load) and shows a toast via notify.
+ * fetchAllData() loads all three in parallel. When any request fails, loadError holds the reasons
+ * (the views show an error state, not zeros or empty tables) and notify shows a toast; values from
+ * an earlier successful load are kept in memory but the views hide them while loadError is set.
  */
-import { resolveCardVaultRest } from "./card-vault-rest.js";
+import { cardVaultRequest } from "./card-vault-rest.js";
 
 const { ref } = window.Compass.Vue;
 
@@ -32,20 +33,24 @@ const isRejected = (result) => result.status === "rejected";
 // The `data` envelope of a fulfilled request, or undefined when it was rejected or empty.
 const settledPayload = (result) => {
   const isFulfilled = result.status === "fulfilled";
-  return isFulfilled ? result.value?.data?.data : undefined;
+  return isFulfilled ? result.value?.data : undefined;
 };
 
+const failureReason = (result) => result.reason?.message || "unknown error";
+
 export const useDealerData = (props, notify) => {
-  const isLoadingData = ref(false);
   const metrics = ref(emptyMetrics());
+  const loadError = ref("");
   const consignors = ref([]);
   const payouts = ref([]);
 
   const applyResults = (results) => {
     const [summaryRes, consignorsRes, payoutsRes] = results;
-    const anyRejected = results.some(isRejected);
+    const rejected = results.filter(isRejected);
+    const anyRejected = rejected.length > 0;
+    loadError.value = anyRejected ? rejected.map(failureReason).join("; ") : "";
     if (anyRejected) {
-      notify("Could not load all Card Vault data. Showing what was already loaded.");
+      notify(`Could not load all Card Vault data: ${loadError.value}`);
     }
 
     const summary = settledPayload(summaryRes);
@@ -59,24 +64,19 @@ export const useDealerData = (props, notify) => {
   };
 
   const fetchAllData = async () => {
-    isLoadingData.value = true;
     try {
-      const { api, base } = resolveCardVaultRest(props.context);
-      if (!api) return;
-
       // Parallel live queries to Card Vault endpoints
       const results = await Promise.allSettled([
-        api.get(`${base}/dealer/summary`),
-        api.get(`${base}/consignors`),
-        api.get(`${base}/payouts`)
+        cardVaultRequest(props.context, "GET", "/dealer/summary"),
+        cardVaultRequest(props.context, "GET", "/consignors"),
+        cardVaultRequest(props.context, "GET", "/payouts")
       ]);
       applyResults(results);
     } catch (err) {
-      notify("Could not load Card Vault data. Showing what was already loaded.");
-    } finally {
-      isLoadingData.value = false;
+      loadError.value = err?.message || "unknown error";
+      notify(`Could not load Card Vault data: ${loadError.value}`);
     }
   };
 
-  return { isLoadingData, metrics, consignors, payouts, fetchAllData };
+  return { metrics, loadError, consignors, payouts, fetchAllData };
 };

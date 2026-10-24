@@ -18,6 +18,9 @@ export const cardVaultAdminTemplate = `
         </x-snackbar>
 
 ${dealerHeaderTemplate}
+        <v-alert v-if="loadError" type="error" variant="tonal" class="mb-6">
+          Card Vault data could not be loaded, so balances and ledgers are not shown: {{ loadError }}
+        </v-alert>
 ${kpiGridTemplate}
 ${consignorDirectoryTemplate}
 ${payoutLedgerTemplate}

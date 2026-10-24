@@ -13,7 +13,7 @@ export const kpiGridTemplate = `
                 <v-icon icon="fad fa-dollar-sign" color="#62c9ff" size="20" />
               </v-sheet>
               <div class="text-h4 font-weight-bold" style="color: #62c9ff;">
-                {{ formatUsd(metrics.grossSales) }}
+                {{ loadError ? '--' : formatUsd(metrics.grossSales) }}
               </div>
               <div class="text-caption text-medium-emphasis mt-1">Consignment + Showcase Sales</div>
             </x-card>
@@ -27,7 +27,7 @@ export const kpiGridTemplate = `
                 <v-icon icon="fad fa-chart-line" color="#00e676" size="20" />
               </v-sheet>
               <div class="text-h4 font-weight-bold text-white">
-                {{ formatUsd(metrics.dealerProfit) }}
+                {{ loadError ? '--' : formatUsd(metrics.dealerProfit) }}
               </div>
               <div class="text-caption text-medium-emphasis mt-1">Retained Commissions</div>
             </x-card>
@@ -41,7 +41,7 @@ export const kpiGridTemplate = `
                 <v-icon icon="fad fa-clock" color="#ffb300" size="20" />
               </v-sheet>
               <div class="text-h4 font-weight-bold text-white">
-                {{ formatUsd(metrics.pendingLiability) }}
+                {{ loadError ? '--' : formatUsd(metrics.pendingLiability) }}
               </div>
               <div class="text-caption text-medium-emphasis mt-1">Unpaid Consignor Balances</div>
             </x-card>
@@ -55,7 +55,7 @@ export const kpiGridTemplate = `
                 <v-icon icon="fad fa-check-circle" color="#38bdf8" size="20" />
               </v-sheet>
               <div class="text-h4 font-weight-bold text-white">
-                {{ formatUsd(metrics.totalPaidOut) }}
+                {{ loadError ? '--' : formatUsd(metrics.totalPaidOut) }}
               </div>
               <div class="text-caption text-medium-emphasis mt-1">Total Payouts Distributed</div>
             </x-card>

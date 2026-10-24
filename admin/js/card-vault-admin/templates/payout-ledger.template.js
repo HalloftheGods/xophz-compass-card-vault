@@ -39,7 +39,7 @@ export const payoutLedgerTemplate = `
               </v-sheet>
             </v-sheet>
 
-            <v-table v-if="hasPayouts" class="bg-transparent">
+            <v-table v-if="hasPayouts && !loadError" class="bg-transparent">
               <thead>
                 <tr>
                   <th class="text-left text-medium-emphasis font-weight-bold">RECORD #</th>
@@ -77,7 +77,7 @@ export const payoutLedgerTemplate = `
               </tbody>
             </v-table>
 
-            <v-sheet v-else color="transparent" class="pa-10 text-center">
+            <v-sheet v-else-if="!loadError" color="transparent" class="pa-10 text-center">
               <v-icon icon="fad fa-receipt" size="48" class="mb-3" color="#64748b" />
               <h4 class="text-subtitle-1 font-weight-bold text-white">No Payout Records Found</h4>
               <p class="text-caption text-medium-emphasis mb-0">Consignment sales recorded at the POS automatically generate itemized ledger payouts.</p>

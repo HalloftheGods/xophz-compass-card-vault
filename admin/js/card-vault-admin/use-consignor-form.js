@@ -3,7 +3,7 @@
  * createConsignor() requires a name, posts the form to /consignors, and on success closes the
  * dialog, resets the form and reloads Dealer HQ data through refresh(). Failures show a toast.
  */
-import { resolveCardVaultRest } from "./card-vault-rest.js";
+import { cardVaultRequest } from "./card-vault-rest.js";
 
 const { ref } = window.Compass.Vue;
 
@@ -30,19 +30,18 @@ export const useConsignorForm = (props, notify, refresh) => {
 
     isSubmitting.value = true;
     try {
-      const { api, base } = resolveCardVaultRest(props.context);
-      const res = await api.post(`${base}/consignors`, newConsignor.value);
+      const res = await cardVaultRequest(props.context, "POST", "/consignors", newConsignor.value);
 
-      if (res.data?.success) {
+      if (res.success) {
         notify(`Consignor "${newConsignor.value.name}" registered successfully.`);
         isConsignorModalOpen.value = false;
         newConsignor.value = blankConsignor();
         await refresh();
       } else {
-        notify(res.data?.message || "Failed to register consignor.");
+        notify(res.message || "Failed to register consignor.");
       }
     } catch (err) {
-      notify("Error communicating with Card Vault service.");
+      notify(`Could not register consignor: ${err.message}`);
     } finally {
       isSubmitting.value = false;
     }

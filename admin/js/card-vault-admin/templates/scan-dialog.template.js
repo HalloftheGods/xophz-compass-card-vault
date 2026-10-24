@@ -12,7 +12,8 @@ export const scanDialogTemplate = `
             <v-sheet color="transparent" class="border border-dashed border-white/20 rounded-lg pa-8 text-center mb-4">
               <v-icon icon="fad fa-camera-retro" size="48" color="#62c9ff" class="mb-3" />
               <div class="text-body-2 font-weight-medium text-white">Live Camera / Hardware Scanner Input</div>
-              <p class="text-caption text-medium-emphasis mb-3">Place trading card under optical station or upload high-resolution scan</p>
+              <p class="text-caption text-medium-emphasis mb-3">Choose a photo or scan of the card to identify it</p>
+              <v-file-input v-model="scanFile" accept="image/*" label="Card image" density="compact" variant="outlined" hide-details class="mb-3" />
               <x-btn color="primary" variant="tonal" size="small" :loading="isScanning" @click="runOpticalScan">
                 Analyze Card Image
               </x-btn>
@@ -20,16 +21,19 @@ export const scanDialogTemplate = `
 
             <v-sheet v-if="scanCardResult" color="transparent" class="callout-info pa-4 rounded-lg">
               <div class="d-flex justify-space-between align-center mb-2">
-                <span class="font-weight-bold text-white">{{ scanCardResult.card_name }}</span>
-                <x-chip size="x-small" color="success" variant="tonal" class="font-weight-bold">
-                  {{ scanCardResult.grade }}
+                <span class="font-weight-bold text-white">{{ scanCardResult.cardName || 'Unidentified card' }}</span>
+                <x-chip v-if="scanCardResult.estimatedCondition" size="x-small" color="info" variant="tonal" class="font-weight-bold">
+                  {{ scanCardResult.estimatedCondition }}
                 </x-chip>
               </div>
               <div class="text-caption d-flex justify-space-between">
-                <span>Centering: {{ scanCardResult.centering }}</span>
-                <span>Surface: {{ scanCardResult.surface_score }}/10</span>
-                <span class="font-weight-bold text-primary">Est. Value: \${{ scanCardResult.market_price }}</span>
+                <span>Set: {{ scanCardResult.setName || 'Unknown' }}</span>
+                <span v-if="scanCardResult.matchedCard?.pricing?.rawMarketPrice" class="font-weight-bold text-primary">
+                  Market: {{ formatUsd(scanCardResult.matchedCard.pricing.rawMarketPrice) }}
+                </span>
+                <span v-else class="text-medium-emphasis">No catalog price</span>
               </div>
+              <div v-if="scanCardResult.visualNotes" class="text-caption text-medium-emphasis mt-2">{{ scanCardResult.visualNotes }}</div>
             </v-sheet>
 
             <v-sheet color="transparent" class="d-flex justify-end mt-4">

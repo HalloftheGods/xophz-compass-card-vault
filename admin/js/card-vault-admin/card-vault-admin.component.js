@@ -38,7 +38,7 @@ export const CardVaultAdmin = defineComponent({
     const hasConsignors = computed(() => dealer.consignors.value.length > 0);
     const ledger = usePayoutLedger(props, dealer.payouts, notify, dealer.fetchAllData);
     const consignorForm = useConsignorForm(props, notify, dealer.fetchAllData);
-    const scan = useOpticalScan(props);
+    const scan = useOpticalScan(props, notify);
 
     const launchPosApp = () => {
       const slug = props.context?.manifest?.slug || "card-vault";
