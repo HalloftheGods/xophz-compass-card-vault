@@ -1302,11 +1302,15 @@ class Card_Vault_API {
 		$return_url    = ! empty( $params['return_url'] ) ? esc_url_raw( $params['return_url'] ) : '';
 		$referral_code = ! empty( $params['referral_code'] ) ? sanitize_text_field( $params['referral_code'] ) : '';
 
+		// This route is public: a client-supplied trial_days is ignored; trial length comes from the tier only.
+		// A return_url containing 'localhost' would switch Bazaar to test mode, so it is not forwarded.
+		if ( '' !== $return_url && false !== stripos( $return_url, 'localhost' ) ) {
+			$return_url = '';
+		}
+
 		$trial_days = 0;
 		if ( $billing === 'annual' ) {
-			if ( isset( $params['trial_days'] ) ) {
-				$trial_days = intval( $params['trial_days'] );
-			} elseif ( $tier === 'single' ) {
+			if ( $tier === 'single' ) {
 				$trial_days = 3;
 			} elseif ( $tier === 'team' ) {
 				$trial_days = 7;
@@ -1322,7 +1326,8 @@ class Card_Vault_API {
 			if ( ! $ref_user ) {
 				$ref_user = get_user_by( 'slug', sanitize_title( $referral_code ) );
 			}
-			if ( $ref_user ) {
+			// Ignore a referral code that belongs to the logged-in buyer (self-referral).
+			if ( $ref_user && (int) $ref_user->ID !== (int) get_current_user_id() ) {
 				$referrer_id = (int) $ref_user->ID;
 			}
 		}
@@ -1424,6 +1429,11 @@ class Card_Vault_API {
 			$ledger_conversions = 0;
 			$ledger_earned      = 0.00;
 			foreach ( $ledger as $entry ) {
+				// Only confirmed-paid sessions count; 'initiated' and 'mock_*' entries are unpaid.
+				$entry_status = isset( $entry['status'] ) ? strtolower( (string) $entry['status'] ) : '';
+				if ( ! in_array( $entry_status, array( 'paid', 'completed', 'complete', 'succeeded' ), true ) ) {
+					continue;
+				}
 				$meta           = $entry['metadata'] ?? array();
 				$entry_ref_id   = isset( $meta['referrer_id'] ) ? (int) $meta['referrer_id'] : 0;
 				$entry_ref_code = isset( $meta['referral_code'] ) ? (string) $meta['referral_code'] : '';
