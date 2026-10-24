@@ -19,7 +19,8 @@
 
   // Pre-compile template if runtime compiler is present
   const precompile = (CardVaultAdmin) => {
-    if (typeof window.Compass.Vue?.compile === "function") {
+    const hasRuntimeCompiler = typeof window.Compass.Vue?.compile === "function";
+    if (hasRuntimeCompiler) {
       try {
         CardVaultAdmin.render = window.Compass.Vue.compile(CardVaultAdmin.template);
       } catch (e) {
@@ -58,5 +59,4 @@
     component: CardVaultAdmin
   });
 
-  console.log("[CardVaultAdmin] Successfully registered 'card-vault' with Compass Bridge.");
 })();
