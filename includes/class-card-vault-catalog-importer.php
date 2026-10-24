@@ -23,6 +23,43 @@ class Card_Vault_Catalog_Importer {
 	const VERSION_ENDPOINT = 'https://cardvault.worldwidewebwork.com/snapshots/version.json';
 	const DEFAULT_CATEGORY_ID = 3; // Pokemon
 
+	// Caps for a hub snapshot: compressed download and decompressed file, in bytes.
+	const SNAPSHOT_MAX_DOWNLOAD_BYTES = 268435456; // 256 MB.
+	const SNAPSHOT_MAX_DB_BYTES       = 1073741824; // 1 GB.
+
+	/**
+	 * Whether a hub snapshot can be applied on this site.
+	 *
+	 * Snapshots are SQLite files swapped into Card_Vault_Catalog_DB::get_db_path(). The catalog now
+	 * lives in MySQL and get_db_path() returns '', so this is false until a real path (or a
+	 * snapshot-to-MySQL import) exists.
+	 *
+	 * @return bool
+	 */
+	public static function snapshot_sync_available(): bool {
+		return Card_Vault_Catalog_DB::get_db_path() !== '';
+	}
+
+	/**
+	 * Whether a snapshot URL points at the Central Hub over https.
+	 *
+	 * Only the scheme and host are checked (host must equal HUB_DOMAIN, no port other than 443,
+	 * no user info). The path is not checked.
+	 *
+	 * @param string $url Candidate URL.
+	 * @return bool
+	 */
+	public static function is_hub_snapshot_url( string $url ): bool {
+		$parts = wp_parse_url( $url );
+		if ( ! is_array( $parts ) ) {
+			return false;
+		}
+		$scheme = strtolower( (string) ( $parts['scheme'] ?? '' ) );
+		$host   = strtolower( (string) ( $parts['host'] ?? '' ) );
+		$port   = isset( $parts['port'] ) ? (int) $parts['port'] : 443;
+		return $scheme === 'https' && $host === self::HUB_DOMAIN && $port === 443 && ! isset( $parts['user'] ) && ! isset( $parts['pass'] );
+	}
+
 	/**
 	 * Initialize catalog hooks and cron schedules.
 	 */
@@ -57,8 +94,22 @@ class Card_Vault_Catalog_Importer {
 	 * @return array{update_available: bool, current_version: string, remote_version: string, last_checked: int}
 	 */
 	public static function check_for_updates(): array {
+		$current_version = (string) get_option( 'card_vault_catalog_version', '' );
+
+		// No snapshot can be applied, so never report one as available and skip the hub request.
+		// The stored remote version is cleared too: GET /catalog/status without check=1 compares it
+		// with card_vault_catalog_version and would otherwise keep reporting an update.
+		if ( ! self::snapshot_sync_available() ) {
+			delete_option( 'card_vault_catalog_remote_version' );
+			return array(
+				'update_available' => false,
+				'current_version'  => $current_version,
+				'remote_version'   => '',
+				'last_checked'     => (int) get_option( 'card_vault_catalog_last_checked', 0 ),
+			);
+		}
+
 		$current_status   = Card_Vault_Catalog_DB::get_status();
-		$current_version  = (string) get_option( 'card_vault_catalog_version', '' );
 		$remote_version   = '';
 		$remote_epoch     = 0;
 		$update_available = false;
@@ -116,21 +167,21 @@ class Card_Vault_Catalog_Importer {
 	 * Cron worker callback for the 6-hour check (Option 3 Self-Hosted Failsafe).
 	 */
 	public static function handle_cron_check_and_update(): void {
+		// No-op while no snapshot can be applied: nothing is downloaded or decompressed.
+		if ( ! self::snapshot_sync_available() ) {
+			return;
+		}
+
 		$check = self::check_for_updates();
 		if ( $check['update_available'] ) {
+			// sync_from_central_hub() records card_vault_catalog_version on success, on both paths.
 			if ( class_exists( 'Card_Vault_Hookshot_Bridge' ) ) {
 				Card_Vault_Hookshot_Bridge::schedule_or_run_sync( array(
 					'source'       => 'snapshot',
 					'download_url' => self::SNAPSHOT_ENDPOINT,
 				) );
 			} else {
-				$result = self::sync_from_central_hub();
-				if ( $result['success'] ) {
-					update_option( 'card_vault_catalog_last_synced', time() );
-					if ( ! empty( $check['remote_version'] ) ) {
-						update_option( 'card_vault_catalog_version', $check['remote_version'] );
-					}
-				}
+				self::sync_from_central_hub();
 			}
 		}
 	}
@@ -355,9 +406,10 @@ class Card_Vault_Catalog_Importer {
 		// Map column names to indices
 		$cols = array_flip( array_map( 'trim', $header ) );
 
-		$cards_batch = array();
-		$now         = time();
-		$count       = 0;
+		// One row per printing: ProductsAndPrices.csv lists a product once per subTypeName.
+		$printings = array();
+		$now       = time();
+		$count     = 0;
 
 		try {
 			while ( ( $row = fgetcsv( $handle ) ) !== false ) {
@@ -400,8 +452,9 @@ class Card_Vault_Catalog_Importer {
 				}
 				$tcg_url      = isset( $cols['url'] ) ? trim( (string) ( $row[ $cols['url'] ] ?? '' ) ) : '';
 
-				$cards_batch[] = array(
-					'id'               => "tcg-{$pid}",
+				// A repeated (product, subTypeName) row replaces the earlier one. The id is assigned below.
+				$printings[ $pid . '|' . strtolower( $subtype ) ] = array(
+					'id'               => '',
 					'tcgplayer_id'     => $pid,
 					'category_id'      => $category_id,
 					'category_name'    => $category_name,
@@ -431,14 +484,32 @@ class Card_Vault_Catalog_Importer {
 					'image_url'        => $image_url,
 					'tcgplayer_url'    => $tcg_url,
 				);
+			}
 
-				$count++;
+			fclose( $handle );
+
+			// A row with an empty subTypeName carries no printing. Drop it when the same product
+			// also has rows with a subTypeName, so it does not become an extra price-less card.
+			$named_pids = array();
+			foreach ( $printings as $printing ) {
+				if ( $printing['sub_type_name'] !== '' ) {
+					$named_pids[ $printing['tcgplayer_id'] ] = true;
+				}
+			}
+			foreach ( array_keys( $named_pids ) as $named_pid ) {
+				unset( $printings[ $named_pid . '|' ] );
+			}
+
+			$cards_batch       = self::assign_printing_ids( array_values( $printings ) );
+			$count             = count( $cards_batch );
+			$history_snapshots = array();
+			foreach ( $cards_batch as $card ) {
 				$history_snapshots[] = array(
-					'card_id'    => "tcg-{$pid}",
-					'raw_market' => $market_price,
-					'raw_low'    => $low_price,
-					'raw_mid'    => $mid_price,
-					'raw_high'   => $high_price,
+					'card_id'    => $card['id'],
+					'raw_market' => $card['market_price'],
+					'raw_low'    => $card['low_price'],
+					'raw_mid'    => $card['mid_price'],
+					'raw_high'   => $card['high_price'],
 					'source'     => 'tcgcsv',
 				);
 			}
@@ -446,8 +517,6 @@ class Card_Vault_Catalog_Importer {
 			if ( ! empty( $history_snapshots ) && class_exists( 'Card_Vault_Price_History' ) ) {
 				Card_Vault_Price_History::record_batch_snapshots( $history_snapshots );
 			}
-
-			fclose( $handle );
 
 			if ( ! empty( $cards_batch ) ) {
 				Card_Vault_Catalog_DB::batch_upsert_cards( $cards_batch );
@@ -474,15 +543,119 @@ class Card_Vault_Catalog_Importer {
 
 			return array( 'success' => true, 'imported_count' => $count );
 		} catch ( Exception $e ) {
-			fclose( $handle );
+			if ( is_resource( $handle ) ) {
+				fclose( $handle );
+			}
 			return array( 'success' => false, 'imported_count' => $count, 'error' => $e->getMessage() );
 		}
 	}
 
 	/**
+	 * Give each printing row (one product + one subTypeName) a catalog id.
+	 *
+	 * Rules, in order:
+	 * 1. A printing already stored keeps its stored id (so inventory and price history that
+	 *    reference it stay linked).
+	 * 2. A stored row of the product with an empty or 'Normal' sub_type_name that no incoming row
+	 *    matched (written before printings were split) is reused by the product's primary new
+	 *    printing: 'Normal', or the first in file order when it has no 'Normal' one.
+	 * 3. Otherwise, when no stored row holds "tcg-{productId}", the primary new printing gets it.
+	 * 4. Every other new printing gets "tcg-{productId}-{sanitized subTypeName}", with a hash
+	 *    suffix when that id is already taken.
+	 *
+	 * Ids are only unique among the rows checked here; the database keys remain the final guard.
+	 *
+	 * @param array $rows Card rows with tcgplayer_id and sub_type_name set.
+	 * @return array The same rows with 'id' set.
+	 */
+	private static function assign_printing_ids( array $rows ): array {
+		global $wpdb;
+		if ( empty( $rows ) ) {
+			return $rows;
+		}
+
+		$table    = Card_Vault_Catalog_DB::get_table_name();
+		$by_pid   = array();
+		foreach ( $rows as $i => $row ) {
+			$by_pid[ (int) $row['tcgplayer_id'] ][] = $i;
+		}
+
+		$stored   = array(); // "pid|subtype" => stored id.
+		$used_ids = array(); // id => true.
+		foreach ( array_chunk( array_keys( $by_pid ), 200 ) as $pid_chunk ) {
+			$bare_ids = array_map( fn( $pid ) => "tcg-{$pid}", $pid_chunk );
+			$found    = $wpdb->get_results( $wpdb->prepare(
+				"SELECT id, tcgplayer_id, sub_type_name FROM {$table}
+				WHERE tcgplayer_id IN (" . implode( ',', array_fill( 0, count( $pid_chunk ), '%d' ) ) . ')
+				OR id IN (' . implode( ',', array_fill( 0, count( $bare_ids ), '%s' ) ) . ')',
+				array_merge( $pid_chunk, $bare_ids )
+			), ARRAY_A );
+			foreach ( (array) $found as $stored_row ) {
+				$used_ids[ (string) $stored_row['id'] ] = true;
+				$stored[ (int) $stored_row['tcgplayer_id'] . '|' . strtolower( trim( (string) $stored_row['sub_type_name'] ) ) ] = (string) $stored_row['id'];
+			}
+		}
+
+		foreach ( $by_pid as $pid => $indexes ) {
+			$pending = array();
+			$claimed = array();
+			foreach ( $indexes as $i ) {
+				$key = $pid . '|' . strtolower( (string) $rows[ $i ]['sub_type_name'] );
+				if ( isset( $stored[ $key ] ) ) {
+					$rows[ $i ]['id'] = $stored[ $key ];
+					$claimed[ $key ]  = true;
+				} else {
+					$pending[] = $i;
+				}
+			}
+
+			$reusable = null;
+			foreach ( array( $pid . '|', $pid . '|normal' ) as $legacy_key ) {
+				if ( isset( $stored[ $legacy_key ] ) && ! isset( $claimed[ $legacy_key ] ) ) {
+					$reusable = $stored[ $legacy_key ];
+					break;
+				}
+			}
+
+			$primary = $pending[0] ?? null;
+			foreach ( $pending as $i ) {
+				if ( strtolower( (string) $rows[ $i ]['sub_type_name'] ) === 'normal' ) {
+					$primary = $i;
+					break;
+				}
+			}
+
+			$bare = "tcg-{$pid}";
+			if ( $primary !== null && $reusable !== null ) {
+				$rows[ $primary ]['id'] = $reusable;
+				$pending                = array_values( array_diff( $pending, array( $primary ) ) );
+			} elseif ( $primary !== null && ! isset( $used_ids[ $bare ] ) ) {
+				$rows[ $primary ]['id'] = $bare;
+				$used_ids[ $bare ]      = true;
+				$pending                = array_values( array_diff( $pending, array( $primary ) ) );
+			}
+
+			foreach ( $pending as $i ) {
+				$subtype = (string) $rows[ $i ]['sub_type_name'];
+				$slug    = substr( sanitize_title( $subtype ), 0, 40 );
+				$hash    = substr( md5( $subtype ), 0, 8 );
+				$id      = "tcg-{$pid}-" . ( $slug !== '' ? $slug : $hash );
+				if ( isset( $used_ids[ $id ] ) ) {
+					$id = "tcg-{$pid}-" . ( $slug !== '' ? substr( $slug, 0, 31 ) . '-' : '' ) . $hash;
+				}
+				$rows[ $i ]['id'] = $id;
+				$used_ids[ $id ]  = true;
+			}
+		}
+
+		return $rows;
+	}
+
+	/**
 	 * Ingest PriceCharting CSV export to populate graded slab comps and price history.
 	 *
-	 * Performs composite matching (set, number, variant) to prevent comp mismatches.
+	 * Performs composite matching (set, number, name, variant) to prevent comp mismatches.
+	 * Rows that match no catalog printing, or more than one, are skipped and not counted.
 	 *
 	 * @param string $csv_path Absolute path to PriceCharting CSV.
 	 * @return array{success: bool, matched_count: int, elapsed_sec: float, error?: string}
@@ -568,27 +741,21 @@ class Card_Vault_Catalog_Importer {
 			}
 
 			$matched_id = null;
-			if ( ! empty( $clean_num ) ) {
+			if ( $clean_num !== '' && $card_name !== '' ) {
+				// Set filter: exact group name, or a tcgcsv code-prefixed name ("SWSH07: Evolving Skies").
+				// A substring LIKE would also pull in "Base Set 2" for "Base Set".
 				$candidates = $wpdb->get_results( $wpdb->prepare(
-					"SELECT id, clean_name, group_name FROM {$cards_table}
-					WHERE clean_number = %s AND (group_name LIKE %s OR %s = '')
-					LIMIT 5",
+					"SELECT id, name, clean_name, group_name, sub_type_name FROM {$cards_table}
+					WHERE clean_number = %s AND (%s = '' OR group_name = %s OR group_name LIKE %s)
+					ORDER BY id ASC
+					LIMIT 50",
 					$clean_num,
-					'%' . $wpdb->esc_like( $clean_set ) . '%',
-					$clean_set
+					$clean_set,
+					$clean_set,
+					'%: ' . $wpdb->esc_like( $clean_set )
 				), ARRAY_A );
 
-				if ( count( $candidates ) === 1 ) {
-					$matched_id = $candidates[0]['id'];
-				} elseif ( count( $candidates ) > 1 ) {
-					$lower_name = strtolower( $card_name );
-					foreach ( $candidates as $cand ) {
-						if ( strpos( $cand['clean_name'], $lower_name ) !== false || strpos( $lower_name, $cand['clean_name'] ) !== false ) {
-							$matched_id = $cand['id'];
-							break;
-						}
-					}
-				}
+				$matched_id = self::match_pricecharting_candidate( (array) $candidates, $card_name, $variant );
 			}
 
 			if ( $matched_id ) {
@@ -633,14 +800,83 @@ class Card_Vault_Catalog_Importer {
 	}
 
 	/**
+	 * Pick the one catalog printing a PriceCharting row describes.
+	 *
+	 * A candidate must match the card name (one name contains the other, case-insensitive).
+	 * With a [variant] tag (e.g. "1st Edition", "Reverse Holo"), the candidate's sub_type_name or
+	 * name must contain the variant. Without one, the candidate must be a base printing:
+	 * sub_type_name Normal, Holofoil, Unlimited, Unlimited Holofoil, or empty.
+	 * Returns null unless exactly one candidate qualifies, so ambiguous rows write nothing.
+	 *
+	 * @param array  $candidates Rows with id, name, clean_name, sub_type_name.
+	 * @param string $card_name  PriceCharting card name with number and variant removed.
+	 * @param string $variant    Text inside the [brackets], or ''.
+	 * @return string|null Matched card id.
+	 */
+	private static function match_pricecharting_candidate( array $candidates, string $card_name, string $variant ): ?string {
+		$normalize = static fn( string $text ): string => trim( preg_replace( '/[^a-z0-9]+/', ' ', strtolower( $text ) ) );
+
+		$lower_name    = $normalize( $card_name );
+		$want_variant  = $normalize( $variant );
+		$base_printing = array( '', 'normal', 'holofoil', 'unlimited', 'unlimited holofoil' );
+		if ( $lower_name === '' ) {
+			return null;
+		}
+
+		$matches = array();
+		foreach ( $candidates as $cand ) {
+			$cand_name = $normalize( (string) ( $cand['clean_name'] ?? '' ) );
+			if ( $cand_name === '' || ( strpos( $cand_name, $lower_name ) === false && strpos( $lower_name, $cand_name ) === false ) ) {
+				continue;
+			}
+
+			$cand_subtype = $normalize( (string) ( $cand['sub_type_name'] ?? '' ) );
+			if ( $want_variant !== '' ) {
+				$full_name = $normalize( (string) ( $cand['name'] ?? '' ) );
+				if ( strpos( $cand_subtype, $want_variant ) === false && strpos( $full_name, $want_variant ) === false ) {
+					continue;
+				}
+			} elseif ( ! in_array( $cand_subtype, $base_printing, true ) ) {
+				continue;
+			}
+
+			$matches[] = (string) $cand['id'];
+		}
+
+		return count( $matches ) === 1 ? $matches[0] : null;
+	}
+
+	/**
 	 * Pull compressed snapshot from the Central Hub and perform an atomic swap.
 	 *
-	 * @param string|null $snapshot_url Optional custom snapshot endpoint.
+	 * Refuses, before any download, a snapshot URL that is not https on HUB_DOMAIN, and any sync
+	 * while snapshot_sync_available() is false. Downloads are capped at SNAPSHOT_MAX_DOWNLOAD_BYTES
+	 * and decompression at SNAPSHOT_MAX_DB_BYTES. The snapshot's sha256 is not verified.
+	 * On success, card_vault_catalog_version is set to the remote version that the last
+	 * check_for_updates() stored; that is not proof the downloaded file is that version.
+	 *
+	 * @param string|null $snapshot_url Optional snapshot URL on HUB_DOMAIN.
 	 * @return array{success: bool, elapsed_sec: float, error?: string}
 	 */
 	public static function sync_from_central_hub( ?string $snapshot_url = null ): array {
 		$start_time = microtime( true );
 		$url = ! empty( $snapshot_url ) ? $snapshot_url : self::SNAPSHOT_ENDPOINT;
+
+		if ( ! self::is_hub_snapshot_url( $url ) ) {
+			return array(
+				'success'     => false,
+				'elapsed_sec' => 0,
+				'error'       => 'Snapshot URL refused: only https://' . self::HUB_DOMAIN . '/ is allowed.',
+			);
+		}
+
+		if ( ! self::snapshot_sync_available() ) {
+			return array(
+				'success'     => false,
+				'elapsed_sec' => 0,
+				'error'       => 'Hub snapshot sync is not available: the catalog is stored in MySQL and has no snapshot file to replace. Use batch sync instead.',
+			);
+		}
 
 		Card_Vault_Catalog_DB::ensure_storage_directory();
 		$db_dir   = Card_Vault_Catalog_DB::get_db_dir();
@@ -648,11 +884,14 @@ class Card_Vault_Catalog_Importer {
 		$tmp_gz   = $db_dir . '/cards.db.download.gz';
 		$tmp_db   = $db_dir . '/cards.db.tmp';
 
-		// 1. Download compressed archive
-		$response = wp_remote_get( $url, array(
-			'timeout'  => 120,
-			'stream'   => true,
-			'filename' => $tmp_gz,
+		// 1. Download compressed archive. Redirects are not followed, wp_safe_remote_get() rejects
+		// private and loopback addresses, and a body cut off at the size cap is refused below.
+		$response = wp_safe_remote_get( $url, array(
+			'timeout'             => 120,
+			'stream'              => true,
+			'filename'            => $tmp_gz,
+			'redirection'         => 0,
+			'limit_response_size' => self::SNAPSHOT_MAX_DOWNLOAD_BYTES,
 		) );
 
 		if ( is_wp_error( $response ) ) {
@@ -661,6 +900,16 @@ class Card_Vault_Catalog_Importer {
 				'success'     => false,
 				'elapsed_sec' => microtime( true ) - $start_time,
 				'error'       => $response->get_error_message(),
+			);
+		}
+
+		clearstatcache( true, $tmp_gz );
+		if ( file_exists( $tmp_gz ) && filesize( $tmp_gz ) >= self::SNAPSHOT_MAX_DOWNLOAD_BYTES ) {
+			@unlink( $tmp_gz );
+			return array(
+				'success'     => false,
+				'elapsed_sec' => microtime( true ) - $start_time,
+				'error'       => 'Hub snapshot exceeds the download size cap.',
 			);
 		}
 
@@ -696,13 +945,35 @@ class Card_Vault_Catalog_Importer {
 			);
 		}
 
+		$written   = 0;
+		$too_large = false;
+		$read_fail = false;
 		while ( ! gzeof( $gz ) ) {
-			fwrite( $out, gzread( $gz, 65536 ) );
+			$chunk = gzread( $gz, 65536 );
+			if ( $chunk === false ) {
+				$read_fail = true;
+				break;
+			}
+			$written += strlen( $chunk );
+			if ( $written > self::SNAPSHOT_MAX_DB_BYTES ) {
+				$too_large = true;
+				break;
+			}
+			fwrite( $out, $chunk );
 		}
 
 		gzclose( $gz );
 		fclose( $out );
 		@unlink( $tmp_gz );
+
+		if ( $too_large || $read_fail ) {
+			@unlink( $tmp_db );
+			return array(
+				'success'     => false,
+				'elapsed_sec' => microtime( true ) - $start_time,
+				'error'       => $too_large ? 'Decompressed hub snapshot exceeds the size cap.' : 'Failed to read gzip archive.',
+			);
+		}
 
 		// 3. Verify SQLite header on uncompressed tmp file
 		$verify_handle = fopen( $tmp_db, 'rb' );
@@ -734,6 +1005,10 @@ class Card_Vault_Catalog_Importer {
 
 		update_option( 'card_vault_catalog_last_synced', time() );
 		update_option( 'card_vault_catalog_last_checked', time() );
+		$remote_version = (string) get_option( 'card_vault_catalog_remote_version', '' );
+		if ( $remote_version !== '' ) {
+			update_option( 'card_vault_catalog_version', $remote_version );
+		}
 
 		return array(
 			'success'     => true,

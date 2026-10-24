@@ -128,7 +128,7 @@ class Card_Vault_Catalog_DB {
 			image_url text DEFAULT NULL,
 			tcgplayer_url text DEFAULT NULL,
 			PRIMARY KEY  (id),
-			UNIQUE KEY tcgplayer_id (tcgplayer_id),
+			UNIQUE KEY tcgplayer_printing (tcgplayer_id, sub_type_name),
 			KEY idx_numeric_lookup (numeric_number, clean_number),
 			KEY idx_group_number (group_id, numeric_number),
 			KEY idx_category_group (category_id, group_id),
@@ -211,10 +211,12 @@ class Card_Vault_Catalog_DB {
 		$offset  = max( 0, $offset );
 		$trimmed = trim( $query );
 
-		// Fast Path 0: Pure numeric TCGPlayer Product ID query (e.g. "106996")
+		// Fast Path 0: Pure numeric TCGPlayer Product ID query (e.g. "106996").
+		// Returns every printing (sub_type_name row) of that product, preferred printing first.
 		if ( ctype_digit( $trimmed ) && (int) $trimmed > 0 ) {
 			$tcg_id = (int) $trimmed;
-			$sql = $wpdb->prepare( "SELECT * FROM {$table} WHERE tcgplayer_id = %d LIMIT 1", $tcg_id );
+			$order  = self::printing_order_sql();
+			$sql    = $wpdb->prepare( "SELECT * FROM {$table} WHERE tcgplayer_id = %d ORDER BY {$order} LIMIT %d", $tcg_id, $limit );
 			$exact = $wpdb->get_results( $sql, ARRAY_A );
 			if ( ! empty( $exact ) ) {
 				return self::format_card_rows( $exact );
@@ -506,8 +508,23 @@ class Card_Vault_Catalog_DB {
 	public static function get_card_by_tcgplayer_id( int $tcgplayer_id ): ?array {
 		global $wpdb;
 		$table = self::get_table_name();
-		$card  = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM {$table} WHERE tcgplayer_id = %d LIMIT 1", $tcgplayer_id ), ARRAY_A );
+		$order = self::printing_order_sql();
+		$card  = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM {$table} WHERE tcgplayer_id = %d ORDER BY {$order} LIMIT 1", $tcgplayer_id ), ARRAY_A );
 		return $card ? self::format_card_row( $card ) : null;
+	}
+
+	/**
+	 * ORDER BY expression that ranks the printings (sub_type_name rows) of one product.
+	 *
+	 * A product can have several printings, one row each. Lookups that return one row per
+	 * product pick, in order: the row with the legacy id "tcg-{tcgplayer_id}", then the
+	 * 'Normal' printing, then the lowest id. This only makes the choice repeatable; it does
+	 * not decide which printing a caller meant.
+	 *
+	 * @return string SQL ORDER BY expression without the ORDER BY keyword.
+	 */
+	public static function printing_order_sql(): string {
+		return "(id = CONCAT('tcg-', tcgplayer_id)) DESC, (sub_type_name = 'Normal') DESC, id ASC";
 	}
 
 	/**
@@ -571,13 +588,19 @@ class Card_Vault_Catalog_DB {
 		$table   = self::get_table_name();
 		$trimmed = trim( $barcode );
 
+		// An empty code must never be compared with upc: rows imported before NULL binding
+		// was fixed hold upc = '' and would match.
+		if ( $trimmed === '' ) {
+			return null;
+		}
+
 		$card = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM {$table} WHERE upc = %s LIMIT 1", $trimmed ), ARRAY_A );
 		if ( $card ) {
 			return $card;
 		}
 
 		$clean_upc = ltrim( $trimmed, '0' );
-		if ( $clean_upc !== $trimmed ) {
+		if ( $clean_upc !== '' && $clean_upc !== $trimmed ) {
 			$card = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM {$table} WHERE upc = %s OR upc = %s LIMIT 1", $trimmed, $clean_upc ), ARRAY_A );
 			if ( $card ) {
 				return $card;
@@ -592,10 +615,66 @@ class Card_Vault_Catalog_DB {
 	}
 
 	/**
+	 * Column => wpdb placeholder for every column batch_upsert_cards() may write.
+	 *
+	 * @return array<string, string>
+	 */
+	private static function upsert_column_formats(): array {
+		return array(
+			'id'               => '%s',
+			'tcgplayer_id'     => '%d',
+			'category_id'      => '%d',
+			'category_name'    => '%s',
+			'group_id'         => '%d',
+			'group_name'       => '%s',
+			'name'             => '%s',
+			'clean_name'       => '%s',
+			'sub_type_name'    => '%s',
+			'raw_number'       => '%s',
+			'clean_number'     => '%s',
+			'numeric_number'   => '%d',
+			'number_prefix'    => '%s',
+			'total_set_number' => '%d',
+			'number_variants'  => '%s',
+			'rarity'           => '%s',
+			'card_type'        => '%s',
+			'stage_or_subtype' => '%s',
+			'hp'               => '%d',
+			'card_text'        => '%s',
+			'upc'              => '%s',
+			'market_price'     => '%f',
+			'low_price'        => '%f',
+			'mid_price'        => '%f',
+			'high_price'       => '%f',
+			'direct_low_price' => '%f',
+			'psa9_price'       => '%f',
+			'psa10_price'      => '%f',
+			'bgs95_price'      => '%f',
+			'cgc10_price'      => '%f',
+			'pricing_source'   => '%s',
+			'updated_at'       => '%d',
+			'image_url'        => '%s',
+			'tcgplayer_url'    => '%s',
+		);
+	}
+
+	/**
 	 * Batch upsert an array of card records via MySQL ON DUPLICATE KEY UPDATE.
 	 *
+	 * Rows are matched on the primary key (id) or on the printing key (tcgplayer_id, sub_type_name).
+	 *
+	 * Per chunk of 200 rows:
+	 * - Only columns that at least one row of the chunk carries are inserted and updated.
+	 *   A column no row carries is left at its schema default on insert and untouched on update.
+	 * - A PHP null (or a key missing from one row while another row has it) is sent as SQL NULL,
+	 *   not as ''. Other values are bound as %d, %f or %s by column type.
+	 * - Graded prices (psa9/psa10/bgs95/cgc10) and pricing_source keep the stored value when the
+	 *   incoming value is NULL, so a tcgcsv resync does not wipe PriceCharting comps.
+	 *
+	 * The return value counts rows sent, not rows MySQL changed, and $wpdb->query errors are not reported.
+	 *
 	 * @param array $cards Array of card associative arrays.
-	 * @return int Number of cards processed.
+	 * @return int Number of cards sent to MySQL.
 	 */
 	public static function batch_upsert_cards( array $cards ): int {
 		global $wpdb;
@@ -603,39 +682,58 @@ class Card_Vault_Catalog_DB {
 			return 0;
 		}
 
-		$table   = self::get_table_name();
-		$columns = array(
-			'id', 'tcgplayer_id', 'category_id', 'category_name', 'group_id', 'group_name',
-			'name', 'clean_name', 'sub_type_name',
-			'raw_number', 'clean_number', 'numeric_number', 'number_prefix', 'total_set_number', 'number_variants',
-			'rarity', 'card_type', 'stage_or_subtype', 'hp', 'card_text', 'upc',
-			'market_price', 'low_price', 'mid_price', 'high_price', 'direct_low_price',
-			'psa9_price', 'psa10_price', 'bgs95_price', 'cgc10_price', 'pricing_source',
-			'updated_at', 'image_url', 'tcgplayer_url',
-		);
-
-		$col_list       = implode( ', ', $columns );
-		$update_clauses = array();
-		foreach ( array( 'category_name', 'group_name', 'name', 'clean_name', 'sub_type_name', 'raw_number', 'clean_number', 'numeric_number', 'number_prefix', 'total_set_number', 'number_variants', 'rarity', 'card_type', 'stage_or_subtype', 'hp', 'card_text', 'upc', 'market_price', 'low_price', 'mid_price', 'high_price', 'direct_low_price', 'psa9_price', 'psa10_price', 'bgs95_price', 'cgc10_price', 'pricing_source', 'updated_at', 'image_url', 'tcgplayer_url' ) as $up_col ) {
-			$update_clauses[] = "{$up_col} = VALUES({$up_col})";
-		}
-		$update_str     = implode( ', ', $update_clauses );
+		$table          = self::get_table_name();
+		$formats        = self::upsert_column_formats();
+		$keep_when_null = array( 'psa9_price', 'psa10_price', 'bgs95_price', 'cgc10_price', 'pricing_source' );
+		$never_update   = array( 'id', 'tcgplayer_id', 'category_id', 'group_id' );
 		$chunks         = array_chunk( $cards, 200 );
 		$total_inserted = 0;
 
 		foreach ( $chunks as $chunk ) {
-			$placeholders = array();
-			$values       = array();
-
+			$present = array();
 			foreach ( $chunk as $card ) {
-				$placeholders[] = '(' . implode( ', ', array_fill( 0, count( $columns ), '%s' ) ) . ')';
-				foreach ( $columns as $col ) {
-					$values[] = $card[ $col ] ?? null;
+				foreach ( $card as $col => $unused ) {
+					if ( isset( $formats[ $col ] ) ) {
+						$present[ $col ] = true;
+					}
 				}
 			}
+			$columns = array_values( array_filter( array_keys( $formats ), fn( $col ) => isset( $present[ $col ] ) ) );
+			if ( empty( $columns ) ) {
+				continue;
+			}
 
-			$query = "INSERT INTO {$table} ({$col_list}) VALUES " . implode( ', ', $placeholders ) . " ON DUPLICATE KEY UPDATE {$update_str}";
-			$wpdb->query( $wpdb->prepare( $query, $values ) );
+			$update_clauses = array();
+			foreach ( $columns as $col ) {
+				if ( in_array( $col, $never_update, true ) ) {
+					continue;
+				}
+				$update_clauses[] = in_array( $col, $keep_when_null, true )
+					? "{$col} = COALESCE(VALUES({$col}), {$col})"
+					: "{$col} = VALUES({$col})";
+			}
+
+			$placeholders = array();
+			$values       = array();
+			foreach ( $chunk as $card ) {
+				$row_placeholders = array();
+				foreach ( $columns as $col ) {
+					$value = $card[ $col ] ?? null;
+					if ( $value === null ) {
+						$row_placeholders[] = 'NULL';
+						continue;
+					}
+					$row_placeholders[] = $formats[ $col ];
+					$values[]           = $value;
+				}
+				$placeholders[] = '(' . implode( ', ', $row_placeholders ) . ')';
+			}
+
+			$query = 'INSERT INTO ' . $table . ' (' . implode( ', ', $columns ) . ') VALUES ' . implode( ', ', $placeholders );
+			if ( ! empty( $update_clauses ) ) {
+				$query .= ' ON DUPLICATE KEY UPDATE ' . implode( ', ', $update_clauses );
+			}
+			$wpdb->query( empty( $values ) ? $query : $wpdb->prepare( $query, $values ) );
 			$total_inserted += count( $chunk );
 		}
 
@@ -715,14 +813,17 @@ class Card_Vault_Catalog_DB {
 							'psa7Price'      => round( (float) $row['market_price'] * 0.72, 2 ),
 							'lastUpdated'    => ! empty( $row['updated_at'] ) ? date( 'Y-m-d', (int) $row['updated_at'] ) : gmdate( 'Y-m-d' ),
 						);
-						$results[ $row['id'] ]                    = $pricing;
-						$results[ (string) $row['tcgplayer_id'] ] = $pricing;
+						$results[ $row['id'] ] = $pricing;
+						// A product can have several printings; the tcgplayer_id key keeps the first one written.
+						if ( ! isset( $results[ (string) $row['tcgplayer_id'] ] ) ) {
+							$results[ (string) $row['tcgplayer_id'] ] = $pricing;
+						}
 					}
 				}
 			}
 		}
 
-		// 2. Query by numeric tcgplayer_ids for missing items
+		// 2. Query by numeric tcgplayer_ids for missing items (preferred printing first, see printing_order_sql())
 		if ( ! empty( $tcgplayer_ids ) ) {
 			$missing_tcgplayer_ids = array();
 			foreach ( $tcgplayer_ids as $tid ) {
@@ -734,12 +835,14 @@ class Card_Vault_Catalog_DB {
 			if ( ! empty( $missing_tcgplayer_ids ) ) {
 				$missing_tcgplayer_ids = array_values( array_unique( $missing_tcgplayer_ids ) );
 				$chunks                = array_chunk( $missing_tcgplayer_ids, 100 );
+				$order                 = self::printing_order_sql();
 				foreach ( $chunks as $chunk ) {
 					$placeholders = implode( ',', array_fill( 0, count( $chunk ), '%d' ) );
 					$query        = $wpdb->prepare(
 						"SELECT id, tcgplayer_id, name, market_price, low_price, mid_price, high_price, direct_low_price, psa10_price, psa9_price, bgs95_price, cgc10_price, pricing_source, updated_at
 						 FROM {$table}
-						 WHERE tcgplayer_id IN ({$placeholders})",
+						 WHERE tcgplayer_id IN ({$placeholders})
+						 ORDER BY {$order}",
 						$chunk
 					);
 					$rows         = $wpdb->get_results( $query, ARRAY_A );
@@ -762,8 +865,12 @@ class Card_Vault_Catalog_DB {
 								'psa7Price'      => round( (float) $row['market_price'] * 0.72, 2 ),
 								'lastUpdated'    => ! empty( $row['updated_at'] ) ? date( 'Y-m-d', (int) $row['updated_at'] ) : gmdate( 'Y-m-d' ),
 							);
-							$results[ $row['id'] ]                    = $pricing;
-							$results[ (string) $row['tcgplayer_id'] ] = $pricing;
+							if ( ! isset( $results[ $row['id'] ] ) ) {
+								$results[ $row['id'] ] = $pricing;
+							}
+							if ( ! isset( $results[ (string) $row['tcgplayer_id'] ] ) ) {
+								$results[ (string) $row['tcgplayer_id'] ] = $pricing;
+							}
 						}
 					}
 				}
@@ -802,6 +909,36 @@ class Card_Vault_Catalog_DB {
 			if ( ! in_array( $col_name, $existing_columns, true ) ) {
 				$wpdb->query( "ALTER TABLE {$table} ADD COLUMN {$col_name} {$col_def}" );
 			}
+		}
+
+		self::migrate_printing_key( $table );
+	}
+
+	/**
+	 * Replace the legacy UNIQUE (tcgplayer_id) key with UNIQUE (tcgplayer_id, sub_type_name).
+	 *
+	 * The legacy key made every printing of a product collapse into one row. dbDelta() adds the
+	 * new key but never drops an old one, so the old key is dropped here once the new key exists.
+	 * Existing rows keep their ids. Nothing is dropped when the new key is missing.
+	 *
+	 * @param string $table Cards table name.
+	 */
+	private static function migrate_printing_key( string $table ): void {
+		global $wpdb;
+		$indexes = $wpdb->get_results( "SHOW INDEX FROM {$table}", ARRAY_A );
+		if ( empty( $indexes ) ) {
+			return;
+		}
+
+		$key_names = array_unique( array_column( $indexes, 'Key_name' ) );
+		if ( ! in_array( 'tcgplayer_printing', $key_names, true ) ) {
+			$wpdb->query( "ALTER TABLE {$table} ADD UNIQUE KEY tcgplayer_printing (tcgplayer_id, sub_type_name)" );
+			$indexes   = $wpdb->get_results( "SHOW INDEX FROM {$table}", ARRAY_A );
+			$key_names = array_unique( array_column( (array) $indexes, 'Key_name' ) );
+		}
+
+		if ( in_array( 'tcgplayer_printing', $key_names, true ) && in_array( 'tcgplayer_id', $key_names, true ) ) {
+			$wpdb->query( "ALTER TABLE {$table} DROP INDEX tcgplayer_id" );
 		}
 	}
 
