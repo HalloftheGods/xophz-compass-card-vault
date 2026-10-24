@@ -114,6 +114,31 @@ class Card_Vault_Consignments {
 	}
 
 	/**
+	 * Retrieve the consignor owned by a user through an exact email match.
+	 *
+	 * Matches only rows with no linked user (wp_user_id = 0) or already linked
+	 * to this user. Never a substring match. Returns null for an empty email.
+	 *
+	 * @param string $email      Exact email address (case-insensitive under the default collation).
+	 * @param int    $wp_user_id WordPress user ID of the requester.
+	 * @return array|null
+	 */
+	public static function get_consignor_by_email( $email, $wp_user_id ) {
+		global $wpdb;
+		$email = sanitize_email( (string) $email );
+		if ( '' === $email ) {
+			return null;
+		}
+		$table = self::get_consignments_table();
+		$sql   = $wpdb->prepare(
+			"SELECT * FROM {$table} WHERE email = %s AND (wp_user_id = 0 OR wp_user_id = %d) ORDER BY wp_user_id DESC, id ASC LIMIT 1",
+			$email,
+			(int) $wp_user_id
+		);
+		return $wpdb->get_row( $sql, ARRAY_A );
+	}
+
+	/**
 	 * Create a new consignor profile.
 	 *
 	 * @param array $data Consignor fields.

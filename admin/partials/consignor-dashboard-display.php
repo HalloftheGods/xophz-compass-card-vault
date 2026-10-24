@@ -15,10 +15,7 @@ $current_user = wp_get_current_user();
 $consignor    = Card_Vault_Consignments::get_consignor_by_user_id( $current_user->ID );
 
 if ( ! $consignor && ! empty( $current_user->user_email ) ) {
-	$matches = Card_Vault_Consignments::get_consignors( array( 'search' => $current_user->user_email ) );
-	if ( ! empty( $matches ) ) {
-		$consignor = $matches[0];
-	}
+	$consignor = Card_Vault_Consignments::get_consignor_by_email( $current_user->user_email, $current_user->ID );
 }
 
 ?>
