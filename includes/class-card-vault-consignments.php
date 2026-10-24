@@ -10,6 +10,8 @@ if ( ! defined( 'WPINC' ) ) {
 	die;
 }
 
+require_once __DIR__ . '/class-card-vault-payout-reversals.php';
+
 class Card_Vault_Consignments {
 
 	/**
@@ -284,10 +286,13 @@ class Card_Vault_Consignments {
 		$sale_price_per_unit = isset( $payout_data['sale_price_per_unit'] ) ? floatval( $payout_data['sale_price_per_unit'] ) : 0.00;
 		$total_sale_amount   = isset( $payout_data['total_sale_amount'] ) ? floatval( $payout_data['total_sale_amount'] ) : ( $sale_price_per_unit * $quantity );
 
-		// Split rate: use passed value, fallback to consignor default, fallback to 85.00
-		if ( isset( $payout_data['consignor_split_rate'] ) && $payout_data['consignor_split_rate'] > 0 ) {
-			$split_rate = floatval( $payout_data['consignor_split_rate'] );
-		} elseif ( $consignor && isset( $consignor['default_split_rate'] ) ) {
+		// Split rate: a positive per-item rate from the caller wins. Callers omit the key
+		// (or pass null) when the item has no rate of its own, so the consignor's
+		// default_split_rate applies, and 85.00 only when the consignor has none.
+		$item_split_rate = $payout_data['consignor_split_rate'] ?? null;
+		if ( is_numeric( $item_split_rate ) && (float) $item_split_rate > 0 ) {
+			$split_rate = floatval( $item_split_rate );
+		} elseif ( $consignor && isset( $consignor['default_split_rate'] ) && is_numeric( $consignor['default_split_rate'] ) && (float) $consignor['default_split_rate'] > 0 ) {
 			$split_rate = floatval( $consignor['default_split_rate'] );
 		} else {
 			$split_rate = 85.00;
@@ -391,31 +396,58 @@ class Card_Vault_Consignments {
 	}
 
 	/**
-	 * Mark a payout record as paid.
+	 * Retrieve a single payout row by its sale_record_id.
 	 *
-	 * @param string|int $identifier sale_record_id string or integer primary key.
+	 * @param string $sale_record_id Sale record identifier.
+	 * @return array|null
+	 */
+	public static function get_payout_by_sale_record_id( $sale_record_id ) {
+		global $wpdb;
+		$table = self::get_payouts_table();
+		$sql   = $wpdb->prepare( "SELECT * FROM {$table} WHERE sale_record_id = %s LIMIT 1", sanitize_text_field( $sale_record_id ) );
+		return $wpdb->get_row( $sql, ARRAY_A );
+	}
+
+	/**
+	 * Settle one unpaid payout: move it from 'unpaid' to 'paid'.
+	 *
+	 * Only the integer primary key is accepted, so a numeric-looking sale_record_id can
+	 * never be mistaken for a row id. The update matches only a row that is still
+	 * 'unpaid', and succeeds only when exactly one row changed: settling a row that is
+	 * already paid, void, under clawback or missing returns false and leaves the first
+	 * payment record (payout_date, payment_reference) untouched.
+	 *
+	 * @param int|string $payout_id Payout primary key (a positive integer or a string of digits).
 	 * @param string     $payment_method Payment method used (e.g. Cash, Venmo, Zelle, Check).
 	 * @param string     $payment_reference Check number, transfer ID, or receipt reference.
-	 * @return bool
+	 * @return bool True only when this call moved the row from unpaid to paid.
 	 */
-	public static function mark_payout_paid( $identifier, $payment_method = 'Cash', $payment_reference = '' ) {
+	public static function mark_payout_paid( $payout_id, $payment_method = 'Cash', $payment_reference = '' ) {
 		global $wpdb;
 		$table = self::get_payouts_table();
 
-		$data = array(
-			'payout_status'     => 'paid',
-			'payout_date'       => current_time( 'mysql' ),
-			'payment_method'    => sanitize_text_field( $payment_method ),
-			'payment_reference' => sanitize_text_field( $payment_reference ),
-		);
-
-		if ( is_numeric( $identifier ) ) {
-			$updated = $wpdb->update( $table, $data, array( 'id' => (int) $identifier ), array( '%s', '%s', '%s', '%s' ), array( '%d' ) );
-		} else {
-			$updated = $wpdb->update( $table, $data, array( 'sale_record_id' => sanitize_text_field( $identifier ) ), array( '%s', '%s', '%s', '%s' ), array( '%s' ) );
+		$is_id = is_int( $payout_id ) || ( is_string( $payout_id ) && ctype_digit( $payout_id ) );
+		if ( ! $is_id || (int) $payout_id <= 0 ) {
+			return false;
 		}
 
-		return false !== $updated;
+		$updated = $wpdb->update(
+			$table,
+			array(
+				'payout_status'     => 'paid',
+				'payout_date'       => current_time( 'mysql' ),
+				'payment_method'    => sanitize_text_field( $payment_method ),
+				'payment_reference' => sanitize_text_field( $payment_reference ),
+			),
+			array(
+				'id'            => (int) $payout_id,
+				'payout_status' => 'unpaid',
+			),
+			array( '%s', '%s', '%s', '%s' ),
+			array( '%d', '%s' )
+		);
+
+		return 1 === $updated;
 	}
 
 	/**
@@ -429,14 +461,18 @@ class Card_Vault_Consignments {
 		$table_payouts = self::get_payouts_table();
 		$consignor_id  = sanitize_text_field( $consignor_id );
 
-		// Aggregations from payouts table
+		// Aggregations from payouts table. 'void' rows (sales reversed before settlement)
+		// count toward nothing. 'clawback' rows hold negative deltas for refunds of sales
+		// already paid out, so sales and profit totals are net of refunds and
+		// clawback_due is what the consignor owes back.
 		$stats_sql = $wpdb->prepare(
 			"SELECT 
-				COALESCE(SUM(quantity), 0) as total_sold_count,
-				COALESCE(SUM(total_sale_amount), 0.00) as total_gross_sales,
+				COALESCE(SUM(CASE WHEN payout_status <> 'void' THEN quantity ELSE 0 END), 0) as total_sold_count,
+				COALESCE(SUM(CASE WHEN payout_status <> 'void' THEN total_sale_amount ELSE 0.00 END), 0.00) as total_gross_sales,
 				COALESCE(SUM(CASE WHEN payout_status = 'unpaid' THEN consignor_payout_amount ELSE 0.00 END), 0.00) as pending_payout_balance,
 				COALESCE(SUM(CASE WHEN payout_status = 'paid' THEN consignor_payout_amount ELSE 0.00 END), 0.00) as total_paid_out,
-				COALESCE(SUM(dealer_profit_amount), 0.00) as dealer_profit_total
+				COALESCE(SUM(CASE WHEN payout_status = 'clawback' THEN -consignor_payout_amount ELSE 0.00 END), 0.00) as clawback_due,
+				COALESCE(SUM(CASE WHEN payout_status <> 'void' THEN dealer_profit_amount ELSE 0.00 END), 0.00) as dealer_profit_total
 			FROM {$table_payouts}
 			WHERE consignor_id = %s",
 			$consignor_id
@@ -472,6 +508,7 @@ class Card_Vault_Consignments {
 			'total_gross_sales'      => (float) ( $stats['total_gross_sales'] ?? 0.00 ),
 			'pending_payout_balance' => (float) ( $stats['pending_payout_balance'] ?? 0.00 ),
 			'total_paid_out'         => (float) ( $stats['total_paid_out'] ?? 0.00 ),
+			'clawback_due'           => (float) ( $stats['clawback_due'] ?? 0.00 ),
 			'dealer_profit_total'    => (float) ( $stats['dealer_profit_total'] ?? 0.00 ),
 			'active_items_count'     => $active_items_count,
 		);
@@ -489,13 +526,16 @@ class Card_Vault_Consignments {
 
 		$consignors_count = (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$table_consignments} WHERE status = 'active'" );
 
+		// Same status rules as get_consignor_summary(): 'void' rows count toward nothing
+		// but the record count, and 'clawback' rows are negative deltas.
 		$stats_sql = "SELECT 
 			COALESCE(COUNT(*), 0) as total_payout_records,
-			COALESCE(SUM(quantity), 0) as total_items_sold,
-			COALESCE(SUM(total_sale_amount), 0.00) as total_gross_sales,
+			COALESCE(SUM(CASE WHEN payout_status <> 'void' THEN quantity ELSE 0 END), 0) as total_items_sold,
+			COALESCE(SUM(CASE WHEN payout_status <> 'void' THEN total_sale_amount ELSE 0.00 END), 0.00) as total_gross_sales,
 			COALESCE(SUM(CASE WHEN payout_status = 'unpaid' THEN consignor_payout_amount ELSE 0.00 END), 0.00) as total_pending_liability,
 			COALESCE(SUM(CASE WHEN payout_status = 'paid' THEN consignor_payout_amount ELSE 0.00 END), 0.00) as total_paid_out,
-			COALESCE(SUM(dealer_profit_amount), 0.00) as total_dealer_profit
+			COALESCE(SUM(CASE WHEN payout_status = 'clawback' THEN -consignor_payout_amount ELSE 0.00 END), 0.00) as total_clawback_due,
+			COALESCE(SUM(CASE WHEN payout_status <> 'void' THEN dealer_profit_amount ELSE 0.00 END), 0.00) as total_dealer_profit
 		FROM {$table_payouts}";
 		$stats = $wpdb->get_row( $stats_sql, ARRAY_A );
 
@@ -528,6 +568,7 @@ class Card_Vault_Consignments {
 			'total_gross_sales'        => (float) ( $stats['total_gross_sales'] ?? 0.00 ),
 			'total_pending_liability'  => (float) ( $stats['total_pending_liability'] ?? 0.00 ),
 			'total_paid_out'           => (float) ( $stats['total_paid_out'] ?? 0.00 ),
+			'total_clawback_due'       => (float) ( $stats['total_clawback_due'] ?? 0.00 ),
 			'total_dealer_profit'      => (float) ( $stats['total_dealer_profit'] ?? 0.00 ),
 			'active_inventory_count'   => $active_inventory_count,
 		);

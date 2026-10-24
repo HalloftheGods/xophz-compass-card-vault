@@ -32,13 +32,33 @@ class Card_Vault_WC_Sync {
 	const META_ASKING_PRICE         = '_card_vault_asking_price';
 	const META_AI_GRADE_REPORT      = '_card_vault_ai_grade_report';
 	const META_IMAGE_URL            = '_card_vault_image_url';
+	const META_APPLIED_SALE         = '_card_vault_applied_sale';
 
 	/**
-	 * Initialize WooCommerce order completion hooks.
+	 * Initialize WooCommerce order hooks.
+	 *
+	 * Consignors are credited when an order reaches 'completed' (fulfilled), not at
+	 * 'processing' (paid, not yet shipped), because processing orders are the ones most
+	 * often cancelled before fulfillment. Card Vault POS tenders call
+	 * handle_order_completed() directly, so POS sales are still credited at the register.
+	 * Cancellations, failures and refunds after crediting are reversed by
+	 * Card_Vault_Payout_Reversals, including credits recorded at 'processing' before this change.
 	 */
 	public static function init() {
 		add_action( 'woocommerce_order_status_completed', array( __CLASS__, 'handle_order_completed' ), 10, 1 );
-		add_action( 'woocommerce_order_status_processing', array( __CLASS__, 'handle_order_completed' ), 10, 1 );
+		Card_Vault_Payout_Reversals::init();
+	}
+
+	/**
+	 * The per-item consignor split rate stored on a product, or null when it has none
+	 * (so record_payout() falls back to the consignor's default_split_rate).
+	 *
+	 * @param int $product_id WooCommerce product ID.
+	 * @return float|null
+	 */
+	private static function get_item_split_rate( $product_id ) {
+		$raw = get_post_meta( $product_id, self::META_CONSIGNOR_SPLIT_RATE, true );
+		return ( is_numeric( $raw ) && (float) $raw > 0 ) ? (float) $raw : null;
 	}
 
 	/**
@@ -222,7 +242,13 @@ class Card_Vault_WC_Sync {
 		update_post_meta( $saved_id, self::META_GRADE_LABEL, $grade_label );
 		update_post_meta( $saved_id, self::META_CERT_NUMBER, sanitize_text_field( $item['certNumber'] ?? '' ) );
 		update_post_meta( $saved_id, self::META_CONSIGNOR_ID, sanitize_text_field( $item['consignorId'] ?? '' ) );
-		update_post_meta( $saved_id, self::META_CONSIGNOR_SPLIT_RATE, isset( $item['consignorSplitRate'] ) ? floatval( $item['consignorSplitRate'] ) : 85.00 );
+		// Store a per-item split rate only when the item has one; otherwise the consignor's default applies at sale time.
+		$item_split_rate = $item['consignorSplitRate'] ?? null;
+		if ( is_numeric( $item_split_rate ) && (float) $item_split_rate > 0 ) {
+			update_post_meta( $saved_id, self::META_CONSIGNOR_SPLIT_RATE, (float) $item_split_rate );
+		} else {
+			delete_post_meta( $saved_id, self::META_CONSIGNOR_SPLIT_RATE );
+		}
 		update_post_meta( $saved_id, self::META_ACQUIRED_PRICE, isset( $item['acquiredPrice'] ) ? floatval( $item['acquiredPrice'] ) : 0.00 );
 		update_post_meta( $saved_id, self::META_ASKING_PRICE, $asking_price );
 
@@ -240,11 +266,12 @@ class Card_Vault_WC_Sync {
 	 * Auto-delist protection: Decrement stock and immediately transition to draft / outofstock if 0.
 	 * Prevents double-selling cards online when sold at physical card shows.
 	 *
-	 * @param int $product_id WooCommerce product ID.
-	 * @param int $quantity_sold Units sold.
+	 * @param int    $product_id WooCommerce product ID.
+	 * @param int    $quantity_sold Units sold.
+	 * @param string $sale_record_id Optional sale id, saved on the product with the new stock so a replay of the sale can be recognised.
 	 * @return array
 	 */
-	public static function auto_delist_product( $product_id, $quantity_sold = 1 ) {
+	public static function auto_delist_product( $product_id, $quantity_sold = 1, $sale_record_id = '' ) {
 		if ( ! self::is_wc_active() ) {
 			return array(
 				'product_id' => $product_id,
@@ -276,6 +303,10 @@ class Card_Vault_WC_Sync {
 			$delisted = true;
 		}
 
+		if ( '' !== (string) $sale_record_id ) {
+			$product->add_meta_data( self::META_APPLIED_SALE, (string) $sale_record_id, false );
+		}
+
 		$product->save();
 
 		return array(
@@ -286,7 +317,52 @@ class Card_Vault_WC_Sync {
 	}
 
 	/**
+	 * Decrement a product's stock for one offline sale, at most once per sale_record_id.
+	 *
+	 * Holds a MySQL named lock on the product while it checks for the sale's marker and
+	 * decrements, so a replayed or duplicated sale id is skipped even when two requests
+	 * carry it at once. The marker is saved in the same product save as the new stock;
+	 * that save is not a database transaction, so a crash between the stock write and the
+	 * marker write could still let one replay decrement again.
+	 *
+	 * @param int    $product_id WooCommerce product ID.
+	 * @param string $sale_record_id Sale record ID from the offline queue.
+	 * @param int    $quantity_sold Units sold.
+	 * @return array { lock_failed: bool, replayed: bool, delisted: bool, ... auto_delist_product() fields }
+	 */
+	private static function apply_sale_stock_once( $product_id, $sale_record_id, $quantity_sold ) {
+		global $wpdb;
+		$lock_name = $wpdb->prefix . 'cv_stock_' . (int) $product_id;
+		$locked    = $wpdb->get_var( $wpdb->prepare( 'SELECT GET_LOCK(%s, %d)', $lock_name, 10 ) );
+		if ( '1' !== (string) $locked ) {
+			return array( 'lock_failed' => true, 'replayed' => false, 'delisted' => false );
+		}
+
+		try {
+			$applied = $wpdb->get_var( $wpdb->prepare(
+				"SELECT meta_id FROM {$wpdb->postmeta} WHERE post_id = %d AND meta_key = %s AND meta_value = %s LIMIT 1",
+				(int) $product_id,
+				self::META_APPLIED_SALE,
+				(string) $sale_record_id
+			) );
+			if ( ! empty( $applied ) ) {
+				return array( 'lock_failed' => false, 'replayed' => true, 'delisted' => false );
+			}
+
+			$result                = self::auto_delist_product( $product_id, $quantity_sold, $sale_record_id );
+			$result['lock_failed'] = false;
+			$result['replayed']    = false;
+			return $result;
+		} finally {
+			$wpdb->query( $wpdb->prepare( 'SELECT RELEASE_LOCK(%s)', $lock_name ) );
+		}
+	}
+
+	/**
 	 * Process a batch of sales deltas from offline POS queues or local transactions.
+	 *
+	 * Replays are safe: a sale_record_id that already reduced a product's stock does not
+	 * reduce it again, and its payout is deduplicated by record_payout().
 	 *
 	 * @param array $sales Array of sale transactions.
 	 * @return array Results summary with synced count and delisted product IDs.
@@ -305,9 +381,13 @@ class Card_Vault_WC_Sync {
 		}
 
 		foreach ( $sales as $sale ) {
+			if ( ! is_array( $sale ) ) {
+				$errors[] = 'Invalid sale entry: expected an object.';
+				continue;
+			}
 			$inventory_item_id = $sale['inventoryItemId'] ?? ( $sale['inventory_item_id'] ?? '' );
 			$card_id           = $sale['cardId'] ?? ( $sale['card_id'] ?? '' );
-			$sale_record_id    = $sale['id'] ?? ( $sale['sale_record_id'] ?? '' );
+			$sale_record_id    = sanitize_text_field( (string) ( $sale['id'] ?? ( $sale['sale_record_id'] ?? '' ) ) );
 			$quantity_sold     = isset( $sale['quantity'] ) ? max( 1, (int) $sale['quantity'] ) : 1;
 
 			if ( empty( $sale_record_id ) ) {
@@ -324,7 +404,12 @@ class Card_Vault_WC_Sync {
 			}
 
 			if ( $product_id > 0 ) {
-				$delist_result = self::auto_delist_product( $product_id, $quantity_sold );
+				$delist_result = self::apply_sale_stock_once( $product_id, $sale_record_id, $quantity_sold );
+				if ( ! empty( $delist_result['lock_failed'] ) ) {
+					// Nothing was applied for this sale, so resending it is safe.
+					$errors[] = sprintf( 'Sale %s not applied: stock for product %d was busy. Resend this sale.', $sale_record_id, $product_id );
+					continue;
+				}
 				if ( ! empty( $delist_result['delisted'] ) ) {
 					$delisted_products[] = $product_id;
 				}
@@ -332,7 +417,7 @@ class Card_Vault_WC_Sync {
 				// Check if this card was consigned
 				$consignor_id = get_post_meta( $product_id, self::META_CONSIGNOR_ID, true );
 				if ( ! empty( $consignor_id ) ) {
-					$split_rate = (float) get_post_meta( $product_id, self::META_CONSIGNOR_SPLIT_RATE, true ) ?: 85.00;
+					$split_rate = self::get_item_split_rate( $product_id );
 					$sale_price = isset( $sale['salePrice'] ) ? floatval( $sale['salePrice'] ) : ( (float) get_post_meta( $product_id, self::META_ASKING_PRICE, true ) );
 
 					Card_Vault_Consignments::record_payout( array(
@@ -354,7 +439,7 @@ class Card_Vault_WC_Sync {
 				}
 			} elseif ( ! empty( $sale['consignorId'] ) ) {
 				// Card was not in WC product table but consignor is tracked
-				$split_rate = isset( $sale['consignorSplitRate'] ) ? floatval( $sale['consignorSplitRate'] ) : 85.00;
+				$split_rate = ( isset( $sale['consignorSplitRate'] ) && is_numeric( $sale['consignorSplitRate'] ) && (float) $sale['consignorSplitRate'] > 0 ) ? (float) $sale['consignorSplitRate'] : null;
 				$sale_price = isset( $sale['salePrice'] ) ? floatval( $sale['salePrice'] ) : 0.00;
 
 				Card_Vault_Consignments::record_payout( array(
@@ -416,13 +501,22 @@ class Card_Vault_WC_Sync {
 				continue;
 			}
 
-			// Generate idempotent sale record identifier for this line item
-			$sale_record_id = sprintf( 'wc_order_%d_item_%d', (int) $order_id, (int) $item_id );
+			// Idempotent sale record identifier for this line item. A line already in the
+			// ledger (credited, settled, voided or clawed back) is never credited again.
+			$sale_record_id = Card_Vault_Payout_Reversals::order_item_sale_record_id( $order_id, $item_id );
+			if ( Card_Vault_Consignments::get_payout_by_sale_record_id( $sale_record_id ) ) {
+				continue;
+			}
 
-			$line_total  = (float) $item->get_total();
-			$quantity    = max( 1, (int) $item->get_quantity() );
-			$unit_price  = $quantity > 0 ? ( $line_total / $quantity ) : $line_total;
-			$split_rate  = (float) get_post_meta( $product_id, self::META_CONSIGNOR_SPLIT_RATE, true ) ?: 85.00;
+			// Credit only what is left of the line after refunds allocated to it.
+			$remaining   = Card_Vault_Payout_Reversals::remaining_for_item( $order, $item_id, $item );
+			$line_total  = $remaining['amount'];
+			if ( $line_total <= 0 ) {
+				continue;
+			}
+			$quantity    = max( 1, $remaining['quantity'] );
+			$unit_price  = $line_total / $quantity;
+			$split_rate  = self::get_item_split_rate( $product_id );
 			$card_name   = $item->get_name();
 			$card_id     = get_post_meta( $product_id, self::META_CARD_ID, true ) ?: ( 'wc_' . $product_id );
 			$vault_id    = get_post_meta( $product_id, self::META_VAULT_ID, true ) ?: '';
@@ -446,14 +540,14 @@ class Card_Vault_WC_Sync {
 				'notes'                    => sprintf( 'Credited automatically from %s Order #%d', ( $is_bazaar ? 'Bazaar POS' : 'Web Storefront' ), $order_id ),
 			) );
 
-			if ( ! is_wp_error( $payout_id ) ) {
+			$credited = is_wp_error( $payout_id ) ? null : Card_Vault_Consignments::get_payout_by_sale_record_id( $sale_record_id );
+			if ( $credited ) {
 				$items_credited++;
-				$consignor_payout = round( $line_total * ( $split_rate / 100.0 ), 2 );
 				$order->add_order_note( sprintf(
 					'Card Vault: Consignor %s credited $%0.2f (%.2f%%) for %s.',
 					$consignor_id,
-					$consignor_payout,
-					$split_rate,
+					(float) $credited['consignor_payout_amount'],
+					(float) $credited['consignor_split_rate'],
 					$card_name
 				) );
 			}
