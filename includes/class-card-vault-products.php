@@ -42,11 +42,19 @@ class Card_Vault_Products {
 		$category = sanitize_text_field( $args['category'] ?? '' );
 		$status   = sanitize_text_field( $args['status'] ?? '' );
 
+		// Only dealers may see or request non-published products.
+		$is_dealer = current_user_can( 'manage_card_vault' ) || current_user_can( 'manage_woocommerce' );
+		if ( ! $is_dealer ) {
+			$status_query = 'publish';
+		} else {
+			$status_query = ! empty( $status ) ? $status : array( 'publish', 'draft' );
+		}
+
 		$query_args = array(
 			'paginate' => true,
 			'page'     => $page,
 			'limit'    => $limit,
-			'status'   => ! empty( $status ) ? $status : array( 'publish', 'draft' ),
+			'status'   => $status_query,
 			'return'   => 'ids',
 		);
 
