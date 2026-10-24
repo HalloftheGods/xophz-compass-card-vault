@@ -3,6 +3,15 @@
 All notable changes to this WordPress plugin submodule will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [2026-10-24]
+
+### Fixed
+- **Consignor credits are reversed when a sale is undone (`includes/class-card-vault-payout-reversals.php`, #6444)**: cancelled, refunded and failed orders void unpaid credits; credits already settled get a `clawback` row with negative amounts that records what the consignor owes back (no money moves). `woocommerce_order_refunded` reduces each consigned line to what is left after the refunds WooCommerce allocated to it; amount-only refunds not allocated to a line change no payout. Summaries exclude `void` rows and report `clawback_due` / `total_clawback_due`.
+- **Storefront orders credit consignors at `completed`, not `processing` (`includes/class-card-vault-wc-sync.php`, #6444)**: Card Vault POS tenders still credit at the register.
+- **Offline sale replays no longer reduce stock again (`Card_Vault_WC_Sync::process_sales_delta`, #6444)**: each sale `id` reduces a product's stock once; a resent or duplicated id is skipped.
+- **Consignor default split rate applies (#6444)**: items without their own rate are paid at the consignor's `default_split_rate` (85% only when the consignor has none), instead of a hard-coded 85%.
+- **Settling a payout is single-shot (`Card_Vault_Consignments::mark_payout_paid`, #6444)**: it takes the integer payout id, moves only an `unpaid` row, and fails when no row changed, so a second settle returns 400 and keeps the first payment record.
+
 ## [2026-10-10]
 
 ### Security
