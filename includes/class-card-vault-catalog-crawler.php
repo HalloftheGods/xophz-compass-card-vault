@@ -22,6 +22,8 @@ class Card_Vault_Catalog_Crawler {
 	const CRON_HOOK_DAILY = 'card_vault_catalog_daily_crawler_cron';
 	const DEFAULT_TARGET_HOURS = 24.0;
 	const MIN_DELAY_SECONDS = 5;
+	const STEP_LOCK_OPTION = 'card_vault_crawler_step_lock';
+	const STEP_LOCK_TTL = 600;
 
 	/**
 	 * Initialize crawler cron hooks and listeners.
@@ -308,10 +310,53 @@ class Card_Vault_Catalog_Crawler {
 	/**
 	 * Process the next pending group in queue.
 	 *
-	 * @param bool $force_step Allow manual execution of a single set even if paused/idle.
+	 * Only one step runs at a time: a second caller gets success=false with a
+	 * "busy" message. The lock expires after STEP_LOCK_TTL seconds if a step dies.
+	 *
+	 * @param bool $force_step    Allow manual execution of a single set even if paused/idle.
+	 * @param bool $schedule_next Schedule the next WP-cron step (a daemon that sleeps itself passes false).
 	 * @return array Step execution result.
 	 */
-	public static function process_next_step( bool $force_step = false ): array {
+	public static function process_next_step( bool $force_step = false, bool $schedule_next = true ): array {
+		if ( ! self::acquire_step_lock() ) {
+			return array( 'success' => false, 'message' => 'Another crawler step is already running.' );
+		}
+
+		try {
+			return self::run_step( $force_step, $schedule_next );
+		} finally {
+			delete_option( self::STEP_LOCK_OPTION );
+		}
+	}
+
+	/**
+	 * Take the step lock atomically (add_option fails if the row exists).
+	 *
+	 * @return bool True when this caller now holds the lock.
+	 */
+	private static function acquire_step_lock(): bool {
+		if ( add_option( self::STEP_LOCK_OPTION, time(), '', 'no' ) ) {
+			return true;
+		}
+
+		$taken_at = (int) get_option( self::STEP_LOCK_OPTION, 0 );
+		if ( $taken_at > 0 && ( time() - $taken_at ) < self::STEP_LOCK_TTL ) {
+			return false;
+		}
+
+		// Stale lock from a step that died: clear it and race for it once.
+		delete_option( self::STEP_LOCK_OPTION );
+		return (bool) add_option( self::STEP_LOCK_OPTION, time(), '', 'no' );
+	}
+
+	/**
+	 * Run one crawler step. Callers must hold the step lock.
+	 *
+	 * @param bool $force_step    See process_next_step().
+	 * @param bool $schedule_next See process_next_step().
+	 * @return array Step execution result.
+	 */
+	private static function run_step( bool $force_step, bool $schedule_next ): array {
 		$state  = self::get_raw_state();
 		$status = $state['status'] ?? 'idle';
 
@@ -366,6 +411,17 @@ class Card_Vault_Catalog_Crawler {
 		// Execute CSV ingestion for this group
 		$result = Card_Vault_Catalog_Importer::import_group_csv( $cid, $gid, $gname, $cname );
 
+		// Pause or reset may have happened during the import: re-read the state and
+		// apply only this item's outcome to it, so a stale copy never overwrites them.
+		$state = self::get_raw_state();
+		if ( empty( $state['queue'][ $target_index ] ) || (int) $state['queue'][ $target_index ]['group_id'] !== $gid ) {
+			return array( 'success' => ! empty( $result['success'] ), 'message' => 'Crawler was reset during the step; its state was not updated.' );
+		}
+		$status = $state['status'] ?? 'idle';
+		if ( ! in_array( $status, array( 'running', 'paused' ), true ) ) {
+			return array( 'success' => ! empty( $result['success'] ), 'message' => 'Crawler was stopped during the step; its state was not updated.' );
+		}
+
 		// Update item outcome
 		$now = time();
 		$is_success = ! empty( $result['success'] );
@@ -410,7 +466,7 @@ class Card_Vault_Catalog_Crawler {
 			update_option( self::STATE_OPTION, $state );
 
 			// Schedule next single-event step only when actively running in background
-			if ( 'running' === $status && ! $force_step ) {
+			if ( 'running' === $status && ! $force_step && $schedule_next ) {
 				wp_clear_scheduled_hook( self::CRON_HOOK_STEP );
 				wp_schedule_single_event( $next_run, self::CRON_HOOK_STEP );
 			}

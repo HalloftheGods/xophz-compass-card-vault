@@ -32,7 +32,7 @@ class Card_Vault_Catalog_REST {
 				array(
 					'methods'             => WP_REST_Server::READABLE,
 					'callback'            => array( __CLASS__, 'handle_search' ),
-					'permission_callback' => array( __CLASS__, 'check_read_permission' ),
+					'permission_callback' => array( __CLASS__, 'check_public_read_permission' ),
 					'args'                => array(
 						'q'        => array( 'sanitize_callback' => 'sanitize_text_field' ),
 						'category' => array( 'sanitize_callback' => 'absint' ),
@@ -44,6 +44,18 @@ class Card_Vault_Catalog_REST {
 				)
 			);
 
+			// 2d. Batch Price Resync for Vault Collection. Must be registered before
+			// /catalog/cards/{id}, which would otherwise match 'prices' first.
+			register_rest_route(
+				$ns,
+				'/catalog/cards/prices',
+				array(
+					'methods'             => WP_REST_Server::CREATABLE,
+					'callback'            => array( __CLASS__, 'handle_resync_prices' ),
+					'permission_callback' => array( __CLASS__, 'check_read_permission' ),
+				)
+			);
+
 			// 2. Single Card Details & Admin Card Updates
 			register_rest_route(
 				$ns,
@@ -52,7 +64,7 @@ class Card_Vault_Catalog_REST {
 					array(
 						'methods'             => WP_REST_Server::READABLE,
 						'callback'            => array( __CLASS__, 'handle_get_card' ),
-						'permission_callback' => array( __CLASS__, 'check_read_permission' ),
+						'permission_callback' => array( __CLASS__, 'check_public_read_permission' ),
 					),
 					array(
 						'methods'             => WP_REST_Server::EDITABLE,
@@ -88,17 +100,6 @@ class Card_Vault_Catalog_REST {
 				)
 			);
 
-			// 2d. Batch Price Resync for Vault Collection
-			register_rest_route(
-				$ns,
-				'/catalog/cards/prices',
-				array(
-					'methods'             => WP_REST_Server::CREATABLE,
-					'callback'            => array( __CLASS__, 'handle_resync_prices' ),
-					'permission_callback' => array( __CLASS__, 'check_read_permission' ),
-				)
-			);
-
 			// 2d. Image Cache Purge
 			register_rest_route(
 				$ns,
@@ -117,7 +118,7 @@ class Card_Vault_Catalog_REST {
 				array(
 					'methods'             => WP_REST_Server::READABLE,
 					'callback'            => array( __CLASS__, 'handle_get_card_history' ),
-					'permission_callback' => array( __CLASS__, 'check_read_permission' ),
+					'permission_callback' => array( __CLASS__, 'check_public_read_permission' ),
 					'args'                => array(
 						'days' => array( 'default' => 30, 'sanitize_callback' => 'absint' ),
 					),
@@ -283,12 +284,49 @@ class Card_Vault_Catalog_REST {
 	 * @return bool|WP_Error
 	 */
 	public static function check_read_permission( WP_REST_Request $request ) {
-		// If user is already an authenticated WP admin/shop manager, permit
+		$result = self::check_read_access( $request );
+		if ( null !== $result ) {
+			return $result;
+		}
+
+		return new WP_Error(
+			'rest_forbidden',
+			__( 'Log in or present a valid API key to use this endpoint.', 'xophz-compass-card-vault' ),
+			array( 'status' => is_user_logged_in() ? 403 : 401 )
+		);
+	}
+
+	/**
+	 * Permission callback for catalog data that is public by design (search, card
+	 * details, card price history). Anonymous callers are allowed only when they
+	 * present no API key; a key that is presented but invalid, revoked or
+	 * under-scoped is refused. No rate limiting is applied.
+	 *
+	 * @param WP_REST_Request $request
+	 * @return bool|WP_Error
+	 */
+	public static function check_public_read_permission( WP_REST_Request $request ) {
+		$result = self::check_read_access( $request );
+		if ( null !== $result ) {
+			return $result;
+		}
+
+		return true;
+	}
+
+	/**
+	 * Shared read-access decision.
+	 *
+	 * @param WP_REST_Request $request
+	 * @return bool|WP_Error|null True for a logged-in user or a valid key, a
+	 *                            WP_Error for a presented key that fails, and
+	 *                            null when the caller is anonymous with no key.
+	 */
+	private static function check_read_access( WP_REST_Request $request ) {
 		if ( current_user_can( 'read' ) ) {
 			return true;
 		}
 
-		// Extract Bearer token or api_key parameter
 		$auth_header = (string) $request->get_header( 'authorization' );
 		$token       = '';
 
@@ -298,22 +336,27 @@ class Card_Vault_Catalog_REST {
 			$token = sanitize_text_field( (string) $request->get_param( 'api_key' ) );
 		}
 
-		// If token is provided, validate via Gatekeeper_Keys
-		if ( ! empty( $token ) ) {
-			if ( class_exists( 'Gatekeeper_Keys' ) ) {
-				$validation = Gatekeeper_Keys::validate_key( $token, 'read:cards' );
-				if ( ! $validation['valid'] ) {
-					return new WP_Error(
-						'gatekeeper_forbidden',
-						$validation['error'] ?? __( 'Invalid or expired API key.', 'xophz-compass-card-vault' ),
-						array( 'status' => 403 )
-					);
-				}
-				return true;
-			}
+		if ( '' === $token ) {
+			return null;
 		}
 
-		// Fallback for local internal frontend requests without a key: permit with rate-limiting
+		if ( ! class_exists( 'Gatekeeper_Keys' ) ) {
+			return new WP_Error(
+				'gatekeeper_unavailable',
+				__( 'API keys cannot be validated on this site.', 'xophz-compass-card-vault' ),
+				array( 'status' => 403 )
+			);
+		}
+
+		$validation = Gatekeeper_Keys::validate_key( $token, 'read:cards' );
+		if ( empty( $validation['valid'] ) ) {
+			return new WP_Error(
+				'gatekeeper_forbidden',
+				$validation['error'] ?? __( 'Invalid or expired API key.', 'xophz-compass-card-vault' ),
+				array( 'status' => 403 )
+			);
+		}
+
 		return true;
 	}
 
@@ -669,41 +712,9 @@ class Card_Vault_Catalog_REST {
 		$code = sanitize_text_field( (string) $request->get_param( 'code' ) );
 		$info = Card_Vault_SKU_Generator::identify_barcode( $code );
 
-		// 1. Single SKU (CV-*) Lookup in Shop Inventory
-		if ( $info['type'] === 'single_sku' ) {
-			global $wpdb;
-			$table = $wpdb->prefix . 'xophz_vault_collector_items';
-
-			// Search for matching item_id or user notes containing the SKU
-			$item = $wpdb->get_row(
-				$wpdb->prepare( "SELECT * FROM {$table} WHERE item_id = %s OR card_payload LIKE %s LIMIT 1", $code, '%' . $wpdb->esc_like( $code ) . '%' ),
-				ARRAY_A
-			);
-
-			if ( $item ) {
-				$payload = ! empty( $item['card_payload'] ) ? json_decode( $item['card_payload'], true ) : array();
-				return rest_ensure_response( array(
-					'success'      => true,
-					'barcode_type' => 'single_sku',
-					'is_inventory' => true,
-					'inventory'    => array(
-						'itemId'        => $item['item_id'],
-						'wpUserId'      => (int) $item['wp_user_id'],
-						'cardName'      => $item['card_name'],
-						'setName'       => $item['set_name'],
-						'cardNumber'    => $item['card_number'],
-						'condition'     => $item['condition_grade'],
-						'quantity'      => (int) $item['quantity'],
-						'askingPrice'   => (float) ( $item['asking_price'] ?? $item['market_price'] ),
-						'marketPrice'   => (float) $item['market_price'],
-						'sku'           => $code,
-						'payload'       => $payload,
-					),
-				) );
-			}
-		}
-
-		// 2. Manufacturer UPC or Catalog ID Lookup
+		// Catalog data only: collector inventory rows belong to their owners and are
+		// never returned from this route.
+		// Manufacturer UPC or Catalog ID Lookup
 		$card = Card_Vault_Catalog_DB::get_card_by_barcode( $code );
 		if ( $card ) {
 			return rest_ensure_response( array(
@@ -832,7 +843,9 @@ class Card_Vault_Catalog_REST {
 	 * @return WP_REST_Response
 	 */
 	public static function handle_crawler_status( WP_REST_Request $request ): WP_REST_Response {
-		$auto_advance = $request->get_param( 'auto_advance' ) !== '0';
+		// Reading status never runs a crawl step. Self-heal of an overdue crawler is
+		// limited to admins; everyone else gets a read-only snapshot.
+		$auto_advance = $request->get_param( 'auto_advance' ) !== '0' && current_user_can( 'manage_options' );
 		$status = Card_Vault_Catalog_Crawler::get_status( $auto_advance );
 
 		return rest_ensure_response( array(

@@ -467,14 +467,15 @@ class Card_Vault_Catalog_CLI {
 					$state['current_group_id']
 				) );
 
-				$step = Card_Vault_Catalog_Crawler::process_next_step();
+				// The daemon sleeps for the pacing delay itself, so it asks for no WP-cron step.
+				$step = Card_Vault_Catalog_Crawler::process_next_step( false, false );
 				if ( $step['success'] ) {
 					WP_CLI::log( sprintf( ' -> Ingested %d cards. %d sets remaining.', $step['imported_cards'], $step['remaining_groups'] ) );
 				} else {
 					WP_CLI::warning( ' -> Step encountered error: ' . ( $step['message'] ?? 'Check logs' ) );
 				}
 
-				if ( ( $step['remaining_groups'] ?? 0 ) <= 0 ) {
+				if ( isset( $step['remaining_groups'] ) && $step['remaining_groups'] <= 0 ) {
 					WP_CLI::success( 'All sets completed!' );
 					break;
 				}
