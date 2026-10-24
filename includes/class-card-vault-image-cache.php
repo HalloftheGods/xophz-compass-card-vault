@@ -22,7 +22,8 @@ if ( ! defined( 'ABSPATH' ) && ! defined( 'WPINC' ) ) {
 
 class Card_Vault_Image_Cache {
 
-	const CACHE_SUBDIR = 'card-vault-cache/images';
+	// Bumped from 'card-vault-cache/images' (#6440): files the old unvalidated route wrote there are no longer served.
+	const CACHE_SUBDIR = 'card-vault-cache/images-v2';
 	const WEBP_QUALITY = 85;
 	const WEBP_THUMB_QUALITY = 78;
 	const MAX_DOWNLOAD_SIZE_BYTES = 5242880; // 5MB limit (enforced while streaming the download)
