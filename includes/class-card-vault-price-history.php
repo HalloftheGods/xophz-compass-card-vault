@@ -112,15 +112,15 @@ class Card_Vault_Price_History {
 			%s, %s, %f, %f, %f, %f,
 			%f, %f, %f, %f, %s, %d
 		) ON DUPLICATE KEY UPDATE
-			raw_market = VALUES(raw_market),
-			raw_low    = VALUES(raw_low),
-			raw_mid    = VALUES(raw_mid),
-			raw_high   = VALUES(raw_high),
+			source     = CASE WHEN VALUES(raw_market) > 0 THEN VALUES(source) ELSE source END,
+			raw_market = CASE WHEN VALUES(raw_market) > 0 THEN VALUES(raw_market) ELSE raw_market END,
+			raw_low    = CASE WHEN VALUES(raw_low) > 0 THEN VALUES(raw_low) ELSE raw_low END,
+			raw_mid    = CASE WHEN VALUES(raw_mid) > 0 THEN VALUES(raw_mid) ELSE raw_mid END,
+			raw_high   = CASE WHEN VALUES(raw_high) > 0 THEN VALUES(raw_high) ELSE raw_high END,
 			psa_9      = CASE WHEN VALUES(psa_9) > 0 THEN VALUES(psa_9) ELSE psa_9 END,
 			psa_10     = CASE WHEN VALUES(psa_10) > 0 THEN VALUES(psa_10) ELSE psa_10 END,
 			bgs_95     = CASE WHEN VALUES(bgs_95) > 0 THEN VALUES(bgs_95) ELSE bgs_95 END,
 			cgc_10     = CASE WHEN VALUES(cgc_10) > 0 THEN VALUES(cgc_10) ELSE cgc_10 END,
-			source     = VALUES(source),
 			created_at = VALUES(created_at)";
 
 		$res = $wpdb->query( $wpdb->prepare(
@@ -196,15 +196,15 @@ class Card_Vault_Price_History {
 				psa_9, psa_10, bgs_95, cgc_10, source, created_at
 			) VALUES " . implode( ', ', $placeholders ) . "
 			ON DUPLICATE KEY UPDATE
-				raw_market = VALUES(raw_market),
-				raw_low    = VALUES(raw_low),
-				raw_mid    = VALUES(raw_mid),
-				raw_high   = VALUES(raw_high),
+				source     = CASE WHEN VALUES(raw_market) > 0 THEN VALUES(source) ELSE source END,
+				raw_market = CASE WHEN VALUES(raw_market) > 0 THEN VALUES(raw_market) ELSE raw_market END,
+				raw_low    = CASE WHEN VALUES(raw_low) > 0 THEN VALUES(raw_low) ELSE raw_low END,
+				raw_mid    = CASE WHEN VALUES(raw_mid) > 0 THEN VALUES(raw_mid) ELSE raw_mid END,
+				raw_high   = CASE WHEN VALUES(raw_high) > 0 THEN VALUES(raw_high) ELSE raw_high END,
 				psa_9      = CASE WHEN VALUES(psa_9) > 0 THEN VALUES(psa_9) ELSE psa_9 END,
 				psa_10     = CASE WHEN VALUES(psa_10) > 0 THEN VALUES(psa_10) ELSE psa_10 END,
 				bgs_95     = CASE WHEN VALUES(bgs_95) > 0 THEN VALUES(bgs_95) ELSE bgs_95 END,
 				cgc_10     = CASE WHEN VALUES(cgc_10) > 0 THEN VALUES(cgc_10) ELSE cgc_10 END,
-				source     = VALUES(source),
 				created_at = VALUES(created_at)";
 
 			$wpdb->query( $wpdb->prepare( $sql, $values ) );
@@ -301,8 +301,7 @@ class Card_Vault_Price_History {
 		$cutoff_date = gmdate( 'Y-m-d', strtotime( "-{$days} days" ) );
 
 		// Extract card IDs and total cost basis
-		$card_map         = array();
-		$total_cost_basis = 0.00;
+		$card_map = array();
 
 		foreach ( $items as $item ) {
 			$cid = (string) ( $item['card_id'] ?? ( $item['cardId'] ?? '' ) );
@@ -327,14 +326,15 @@ class Card_Vault_Price_History {
 
 			if ( ! isset( $card_map[ $cid ] ) ) {
 				$card_map[ $cid ] = array(
-					'qty'             => $qty,
-					'cond_multiplier' => $cond_multiplier,
+					'qty'        => 0,
+					'raw_weight' => 0.0,
+					'cost'       => 0.0,
 				);
-			} else {
-				$card_map[ $cid ]['qty'] += $qty;
 			}
-
-			$total_cost_basis += ( $cost * $qty );
+			// Each copy keeps its own condition multiplier.
+			$card_map[ $cid ]['qty']        += $qty;
+			$card_map[ $cid ]['raw_weight'] += ( $qty * $cond_multiplier );
+			$card_map[ $cid ]['cost']       += ( $cost * $qty );
 		}
 
 		if ( empty( $card_map ) ) {
@@ -343,6 +343,7 @@ class Card_Vault_Price_History {
 
 		$table        = self::get_table_name();
 		$card_ids     = array_keys( $card_map );
+		$by_date      = array(); // date => card_id => [raw_market, psa_10]
 		$daily_totals = array();
 
 		// Query history rows in chunks of 100
@@ -363,25 +364,41 @@ class Card_Vault_Price_History {
 				foreach ( $rows as $r ) {
 					$dt  = (string) $r['recorded_date'];
 					$cid = (string) $r['card_id'];
-					$cfg = $card_map[ $cid ] ?? array( 'qty' => 1, 'cond_multiplier' => 1.0 );
-
-					if ( ! isset( $daily_totals[ $dt ] ) ) {
-						$daily_totals[ $dt ] = array(
-							'raw'   => 0.00,
-							'psa10' => 0.00,
-						);
+					if ( ! isset( $card_map[ $cid ] ) ) {
+						continue;
 					}
-
-					$raw_market = (float) $r['raw_market'];
-					$psa_10     = (float) $r['psa_10'];
-
-					$daily_totals[ $dt ]['raw']   += ( $raw_market * $cfg['cond_multiplier'] * $cfg['qty'] );
-					$daily_totals[ $dt ]['psa10'] += ( $psa_10 * $cfg['qty'] );
+					$by_date[ $dt ][ $cid ] = array( (float) $r['raw_market'], (float) $r['psa_10'] );
 				}
 			}
 		}
 
-		ksort( $daily_totals );
+		ksort( $by_date );
+
+		// Carry each card's last known prices forward so a date never values
+		// only the cards whose group happened to be crawled that day. The cost
+		// basis on each date covers the same cards that have a price by then.
+		$last_price  = array();
+		$cost_priced = array();
+		foreach ( $by_date as $dt => $day_rows ) {
+			foreach ( $day_rows as $cid => $prices ) {
+				$last_price[ $cid ]  = $prices;
+				$cost_priced[ $cid ] = (float) $card_map[ $cid ]['cost'];
+			}
+
+			$raw_total   = 0.00;
+			$psa10_total = 0.00;
+			foreach ( $last_price as $cid => $prices ) {
+				$cfg          = $card_map[ $cid ];
+				$raw_total   += ( $prices[0] * $cfg['raw_weight'] );
+				$psa10_total += ( $prices[1] * $cfg['qty'] );
+			}
+
+			$daily_totals[ $dt ] = array(
+				'raw'   => $raw_total,
+				'psa10' => $psa10_total,
+				'cost'  => array_sum( $cost_priced ),
+			);
+		}
 
 		$points      = array();
 		$month_names = array( '', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec' );
@@ -394,14 +411,15 @@ class Card_Vault_Price_History {
 
 			$market_val = round( $totals['raw'], 2 );
 			$top_graded = round( $totals['psa10'], 2 );
-			$gain       = round( $market_val - $total_cost_basis, 2 );
-			$roi        = $total_cost_basis > 0 ? round( ( $gain / $total_cost_basis ) * 100, 1 ) : 0.0;
+			$day_cost   = (float) $totals['cost'];
+			$gain       = round( $market_val - $day_cost, 2 );
+			$roi        = $day_cost > 0 ? round( ( $gain / $day_cost ) * 100, 1 ) : 0.0;
 
 			$points[] = array(
 				'date'           => $date_str,
 				'label'          => $label,
 				'marketValue'    => $market_val,
-				'costBasis'      => round( $total_cost_basis, 2 ),
+				'costBasis'      => round( $day_cost, 2 ),
 				'unrealizedGain' => $gain,
 				'roiPercent'     => $roi,
 				'topGradedValue' => $top_graded,
