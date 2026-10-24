@@ -5,6 +5,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [2026-10-24]
 
+### Changed
+- **Compass admin view split into modules (`admin/js/card-vault-admin.js`, `admin/js/card-vault-admin/`, #6124)**: The 699-line script is now a 62-line classic loader that registers `card-vault` with `window.Compass` synchronously, using `defineAsyncComponent`. The view loads on first render from the ES module `card-vault-admin/card-vault-admin.component.js`. That module composes `use-dealer-data`, `use-payout-ledger`, `use-consignor-form`, `use-optical-scan` and `use-card-vault-toast`, and builds its template from seven section partials in `card-vault-admin/templates/`. The REST routes, request bodies, toasts and rendered markup are unchanged, checked by mounting the old and new views side by side under jsdom (25 scenarios, no differences). The settle handler is renamed `markPayoutSettled`. If the module import fails, the view shows the load error instead of Dealer HQ. The view now needs a browser with dynamic `import()` and a server that serves the `card-vault-admin/` files.
+
 ### Fixed
 - **Consignor credits are reversed when a sale is undone (`includes/class-card-vault-payout-reversals.php`, #6444)**: cancelled, refunded and failed orders void unpaid credits; credits already settled get a `clawback` row with negative amounts that records what the consignor owes back (no money moves). `woocommerce_order_refunded` reduces each consigned line to what is left after the refunds WooCommerce allocated to it; amount-only refunds not allocated to a line change no payout. Summaries exclude `void` rows and report `clawback_due` / `total_clawback_due`.
 - **Storefront orders credit consignors at `completed`, not `processing` (`includes/class-card-vault-wc-sync.php`, #6444)**: Card Vault POS tenders still credit at the register.
