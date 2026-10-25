@@ -31,7 +31,7 @@ class Card_Vault_Number_Normalizer {
 	 */
 	public static function normalize( string $raw_number ): array {
 		$raw = trim( $raw_number );
-		if ( empty( $raw ) ) {
+		if ( '' === $raw ) {
 			return array(
 				'raw_number'       => '',
 				'clean_number'     => '',
@@ -58,7 +58,7 @@ class Card_Vault_Number_Normalizer {
 		}
 
 		// 2. Extract prefix and pure numeric value (e.g. "TG01", "GG35", "SWSH001", "OP05-001", "004")
-		if ( preg_match( '/^([A-Za-z]+[-_]?|[A-Za-z]+\d+[-_])(\d+.*)$/', $clean_number, $matches ) ) {
+		if ( preg_match( '/^([A-Za-z]+\d+[-_]|[A-Za-z]+[-_]?)(\d+.*)$/', $clean_number, $matches ) ) {
 			$number_prefix = rtrim( $matches[1], '-_' );
 			$num_part      = preg_replace( '/\D/', '', $matches[2] );
 			if ( $num_part !== '' ) {
@@ -131,7 +131,7 @@ class Card_Vault_Number_Normalizer {
 			$tokens[] = (string) $total;
 		}
 
-		$unique_tokens = array_unique( array_filter( array_map( 'trim', $tokens ) ) );
+		$unique_tokens = array_unique( array_filter( array_map( 'trim', $tokens ), 'strlen' ) );
 		return implode( ' ', $unique_tokens );
 	}
 

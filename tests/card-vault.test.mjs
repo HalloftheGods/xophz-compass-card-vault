@@ -312,6 +312,23 @@ describe('Card Vault Submodule Tests', () => {
       assert.strictEqual(res.total_set_number, 30);
     });
 
+    it('normalize keeps a digit-bearing set prefix out of the numeric value', () => {
+      const res = runPhpJson(prelude + `echo json_encode(array(Card_Vault_Number_Normalizer::normalize('OP05-001'), Card_Vault_Number_Normalizer::normalize('BT1-001'), Card_Vault_Number_Normalizer::normalize('SWSH001')));`);
+      assert.strictEqual(res[0].number_prefix, 'OP05');
+      assert.strictEqual(res[0].numeric_number, 1);
+      assert.strictEqual(res[1].number_prefix, 'BT1');
+      assert.strictEqual(res[1].numeric_number, 1);
+      assert.strictEqual(res[2].number_prefix, 'SWSH');
+      assert.strictEqual(res[2].numeric_number, 1);
+    });
+
+    it('normalize keeps the card number 0', () => {
+      const res = runPhpJson(prelude + `echo json_encode(Card_Vault_Number_Normalizer::normalize('0'));`);
+      assert.strictEqual(res.raw_number, '0');
+      assert.strictEqual(res.numeric_number, 0);
+      assert.ok(res.number_variants.split(' ').includes('0'));
+    });
+
     it('generate_sku builds a deterministic ungraded SKU', () => {
       const res = runPhpJson(prelude + `
         $item = array('id' => 'abc', 'condition' => 'nm', 'is_foil' => true, 'card' => array('game' => 'pkm', 'setCode' => 'mew', 'number' => '199/165'));
