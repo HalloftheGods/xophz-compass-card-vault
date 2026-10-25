@@ -1353,6 +1353,9 @@ class Card_Vault_API {
 			// Ignore a referral code that belongs to the logged-in buyer (self-referral).
 			if ( $ref_user && (int) $ref_user->ID !== (int) get_current_user_id() ) {
 				$referrer_id = (int) $ref_user->ID;
+			} elseif ( $ref_user ) {
+				// Drop the code itself too: a later commission step matches on referral_code, not referrer_id.
+				$referral_code = '';
 			}
 		}
 
