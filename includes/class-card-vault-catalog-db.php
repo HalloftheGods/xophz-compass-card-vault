@@ -206,245 +206,185 @@ class Card_Vault_Catalog_DB {
 	 */
 	public static function search_cards( string $query, array $filters = array(), int $limit = 25, int $offset = 0 ): array {
 		global $wpdb;
-		$table   = self::get_table_name();
-		$limit   = max( 1, min( 100, $limit ) );
-		$offset  = max( 0, $offset );
-		$trimmed = trim( $query );
+		$table  = self::get_table_name();
+		$limit  = max( 1, min( 100, $limit ) );
+		$offset = max( 0, $offset );
 
-		// Fast Path 0: Pure numeric TCGPlayer Product ID query (e.g. "106996").
-		// Returns every printing (sub_type_name row) of that product, preferred printing first.
+		$plan = self::resolve_search_plan( trim( $query ), $filters );
+		$sql  = $wpdb->prepare(
+			"SELECT * FROM {$table} WHERE {$plan['where']} ORDER BY {$plan['order']} LIMIT %d OFFSET %d",
+			array_merge( $plan['args'], array( $limit, $offset ) )
+		);
+		$results = $wpdb->get_results( $sql, ARRAY_A );
+
+		return self::format_card_rows( $results ?: array() );
+	}
+
+	/**
+	 * Build the filter clause shared by every search path and by the count.
+	 *
+	 * Handles category_id, group_id, group_ids (IN list of %d placeholders) and rarity.
+	 * Every non-empty filter narrows the result; an empty group_ids list adds nothing.
+	 *
+	 * @param array $filters Optional filters.
+	 * @return array{0: string, 1: array} SQL fragment starting with " AND " (or "") and its args.
+	 */
+	private static function build_filter_clause( array $filters ): array {
+		$sql  = '';
+		$args = array();
+
+		if ( ! empty( $filters['category_id'] ) ) {
+			$sql   .= ' AND category_id = %d';
+			$args[] = (int) $filters['category_id'];
+		}
+		if ( ! empty( $filters['group_id'] ) ) {
+			$sql   .= ' AND group_id = %d';
+			$args[] = (int) $filters['group_id'];
+		}
+		if ( ! empty( $filters['group_ids'] ) && is_array( $filters['group_ids'] ) ) {
+			$ids = array_values( array_filter( array_map( 'intval', $filters['group_ids'] ) ) );
+			if ( ! empty( $ids ) ) {
+				$sql .= ' AND group_id IN (' . implode( ', ', array_fill( 0, count( $ids ), '%d' ) ) . ')';
+				$args = array_merge( $args, $ids );
+			}
+		}
+		if ( ! empty( $filters['rarity'] ) ) {
+			$sql   .= ' AND rarity = %s';
+			$args[] = sanitize_text_field( $filters['rarity'] );
+		}
+
+		return array( $sql, $args );
+	}
+
+	/**
+	 * List the candidate search plans for a query, most specific first.
+	 *
+	 * Each plan is array( where, args, order ). The where clause already carries the
+	 * filters, and an OR in a base clause is parenthesised so filters cannot be escaped.
+	 *
+	 * @param string $trimmed Trimmed user query.
+	 * @param array  $filters Optional filters.
+	 * @return array List of plans.
+	 */
+	private static function build_search_plans( string $trimmed, array $filters ): array {
+		global $wpdb;
+		list( $filter_sql, $filter_args ) = self::build_filter_clause( $filters );
+		$plans = array();
+
+		if ( '' === $trimmed ) {
+			$plans[] = array( '1=1' . $filter_sql, $filter_args, 'market_price DESC, name ASC' );
+			return $plans;
+		}
+
+		// Pure numeric TCGPlayer Product ID query (e.g. "106996"): every printing of that product.
 		if ( ctype_digit( $trimmed ) && (int) $trimmed > 0 ) {
-			$tcg_id = (int) $trimmed;
-			$order  = self::printing_order_sql();
-			$sql    = $wpdb->prepare( "SELECT * FROM {$table} WHERE tcgplayer_id = %d ORDER BY {$order} LIMIT %d", $tcg_id, $limit );
-			$exact = $wpdb->get_results( $sql, ARRAY_A );
-			if ( ! empty( $exact ) ) {
-				return self::format_card_rows( $exact );
-			}
+			$plans[] = array( 'tcgplayer_id = %d' . $filter_sql, array_merge( array( (int) $trimmed ), $filter_args ), self::printing_order_sql() );
 		}
 
-		// 1. Check for Smart Number Intent
 		$intent = Card_Vault_Number_Normalizer::extract_number_intent( $trimmed );
+		if ( $intent['has_number_intent'] ) {
+			$has_kw    = ! empty( $intent['clean_keyword'] );
+			$has_total = $intent['target_total'] !== null;
+			$clean_kw  = $has_kw ? preg_replace( '/[+\-><()~*\"@]+/', '', $intent['clean_keyword'] ) : '';
 
-		// Fast Path A: Pure fraction query with no keyword (e.g. "199/165")
-		if ( $intent['has_number_intent'] && empty( $intent['clean_keyword'] ) && $intent['target_total'] !== null ) {
-			$where = '(numeric_number = %d OR clean_number = %s) AND total_set_number = %d';
-			$args  = array( $intent['target_number'], $intent['target_clean'], $intent['target_total'] );
-
-			if ( ! empty( $filters['category_id'] ) ) {
-				$where .= ' AND category_id = %d';
-				$args[] = (int) $filters['category_id'];
+			// A: pure fraction (e.g. "199/165").
+			if ( ! $has_kw && $has_total ) {
+				$plans[] = array(
+					'(numeric_number = %d OR clean_number = %s) AND total_set_number = %d' . $filter_sql,
+					array_merge( array( $intent['target_number'], $intent['target_clean'], $intent['target_total'] ), $filter_args ),
+					'id',
+				);
 			}
-
-			$sql = $wpdb->prepare( "SELECT * FROM {$table} WHERE {$where} LIMIT %d OFFSET %d", array_merge( $args, array( $limit, $offset ) ) );
-			$results = $wpdb->get_results( $sql, ARRAY_A );
-			if ( ! empty( $results ) ) {
-				return self::format_card_rows( $results );
+			// B: fraction with keyword (e.g. "Charizard 199/165").
+			if ( $has_kw && $has_total ) {
+				$plans[] = array(
+					'MATCH(name, clean_name, group_name) AGAINST(%s IN BOOLEAN MODE) AND (numeric_number = %d OR clean_number = %s) AND total_set_number = %d' . $filter_sql,
+					array_merge( array( "+{$clean_kw}*", $intent['target_number'], $intent['target_clean'], $intent['target_total'] ), $filter_args ),
+					'id',
+				);
 			}
-		}
-
-		// Fast Path B: Fraction with keyword (e.g. "Charizard 199/165")
-		if ( $intent['has_number_intent'] && ! empty( $intent['clean_keyword'] ) && $intent['target_total'] !== null ) {
-			$clean_kw = preg_replace( '/[+\-><()~*\"@]+/', '', $intent['clean_keyword'] );
-			$where    = 'MATCH(name, clean_name, group_name) AGAINST(%s IN BOOLEAN MODE) AND (numeric_number = %d OR clean_number = %s) AND total_set_number = %d';
-			$args     = array( "+{$clean_kw}*", $intent['target_number'], $intent['target_clean'], $intent['target_total'] );
-
-			if ( ! empty( $filters['category_id'] ) ) {
-				$where .= ' AND category_id = %d';
-				$args[] = (int) $filters['category_id'];
+			// C: number with keyword, no set total (e.g. "Charizard 4").
+			if ( $has_kw && ! $has_total && strlen( $clean_kw ) > 0 ) {
+				$plans[] = array(
+					'MATCH(name, clean_name, group_name) AGAINST(%s IN BOOLEAN MODE) AND (numeric_number = %d OR clean_number = %s OR raw_number = %s)' . $filter_sql,
+					array_merge( array( "+{$clean_kw}*", $intent['target_number'] ?? 0, $intent['target_clean'], $intent['target_clean'] ), $filter_args ),
+					'market_price DESC',
+				);
 			}
-
-			$sql = $wpdb->prepare( "SELECT * FROM {$table} WHERE {$where} LIMIT %d OFFSET %d", array_merge( $args, array( $limit, $offset ) ) );
-			$results = $wpdb->get_results( $sql, ARRAY_A );
-			if ( ! empty( $results ) ) {
-				return self::format_card_rows( $results );
-			}
-		}
-
-		// Fast Path C: Number with keyword but no set total (e.g. "Charizard 4" or "Pikachu SWSH020")
-		if ( $intent['has_number_intent'] && ! empty( $intent['clean_keyword'] ) && $intent['target_total'] === null ) {
-			$clean_kw = preg_replace( '/[+\-><()~*\"@]+/', '', $intent['clean_keyword'] );
-			if ( strlen( $clean_kw ) > 0 ) {
-				$where = 'MATCH(name, clean_name, group_name) AGAINST(%s IN BOOLEAN MODE) AND (numeric_number = %d OR clean_number = %s OR raw_number = %s)';
-				$args  = array( "+{$clean_kw}*", $intent['target_number'] ?? 0, $intent['target_clean'], $intent['target_clean'] );
-
-				if ( ! empty( $filters['category_id'] ) ) {
-					$where .= ' AND category_id = %d';
-					$args[] = (int) $filters['category_id'];
-				}
-
-				$sql = $wpdb->prepare( "SELECT * FROM {$table} WHERE {$where} ORDER BY market_price DESC LIMIT %d OFFSET %d", array_merge( $args, array( $limit, $offset ) ) );
-				$results = $wpdb->get_results( $sql, ARRAY_A );
-				if ( ! empty( $results ) ) {
-					return self::format_card_rows( $results );
-				}
+			// D: standalone promo or card code (e.g. "SWSH020", "TG01").
+			if ( ! $has_kw && ! $has_total && ! empty( $intent['target_clean'] ) ) {
+				$plans[] = array(
+					'(clean_number = %s OR raw_number = %s)' . $filter_sql,
+					array_merge( array( $intent['target_clean'], $intent['target_clean'] ), $filter_args ),
+					'market_price DESC',
+				);
 			}
 		}
 
-		// Fast Path D: Standalone promo or card code (e.g. "SWSH020", "TG01")
-		if ( $intent['has_number_intent'] && empty( $intent['clean_keyword'] ) && $intent['target_total'] === null && ! empty( $intent['target_clean'] ) ) {
-			$where = 'clean_number = %s OR raw_number = %s';
-			$args  = array( $intent['target_clean'], $intent['target_clean'] );
-
-			if ( ! empty( $filters['category_id'] ) ) {
-				$where .= ' AND category_id = %d';
-				$args[] = (int) $filters['category_id'];
-			}
-
-			$sql = $wpdb->prepare( "SELECT * FROM {$table} WHERE {$where} ORDER BY market_price DESC LIMIT %d OFFSET %d", array_merge( $args, array( $limit, $offset ) ) );
-			$results = $wpdb->get_results( $sql, ARRAY_A );
-			if ( ! empty( $results ) ) {
-				return self::format_card_rows( $results );
-			}
-		}
-
-		// Standard Path: Empty query browses all cards
-		if ( empty( $trimmed ) ) {
-			$where = '1=1';
-			$args  = array();
-
-			if ( ! empty( $filters['category_id'] ) ) {
-				$where .= ' AND category_id = %d';
-				$args[] = (int) $filters['category_id'];
-			}
-			if ( ! empty( $filters['group_id'] ) ) {
-				$where .= ' AND group_id = %d';
-				$args[] = (int) $filters['group_id'];
-			}
-			if ( ! empty( $filters['rarity'] ) ) {
-				$where .= ' AND rarity = %s';
-				$args[] = sanitize_text_field( $filters['rarity'] );
-			}
-
-			$sql = empty( $args )
-				? $wpdb->prepare( "SELECT * FROM {$table} WHERE {$where} ORDER BY market_price DESC, name ASC LIMIT %d OFFSET %d", $limit, $offset )
-				: $wpdb->prepare( "SELECT * FROM {$table} WHERE {$where} ORDER BY market_price DESC, name ASC LIMIT %d OFFSET %d", array_merge( $args, array( $limit, $offset ) ) );
-			$raw_rows = $wpdb->get_results( $sql, ARRAY_A ) ?: array();
-			return self::format_card_rows( $raw_rows );
-		}
-
-		// Standard Path: FULLTEXT Boolean search
-		$terms = array_filter( explode( ' ', $trimmed ), fn( $t ) => strlen( trim( $t ) ) > 0 );
+		// FULLTEXT Boolean search.
 		$ft_query = '';
-		foreach ( $terms as $term ) {
+		foreach ( array_filter( explode( ' ', $trimmed ), fn( $t ) => strlen( trim( $t ) ) > 0 ) as $term ) {
 			$cleaned_term = preg_replace( '/[+\-><()~*\"@]+/', '', $term );
 			if ( strlen( $cleaned_term ) > 0 ) {
 				$ft_query .= '+' . $cleaned_term . '* ';
 			}
 		}
 		$ft_query = trim( $ft_query );
+		$plans[]  = array(
+			'MATCH(name, clean_name, group_name) AGAINST(%s IN BOOLEAN MODE)' . $filter_sql,
+			array_merge( array( $ft_query ), $filter_args ),
+			'market_price DESC, name ASC',
+		);
 
-		$where = 'MATCH(name, clean_name, group_name) AGAINST(%s IN BOOLEAN MODE)';
-		$args  = array( $ft_query );
+		// LIKE fallback when nothing above matches.
+		$like_val = '%' . $wpdb->esc_like( strtolower( $trimmed ) ) . '%';
+		$plans[]  = array(
+			'(clean_name LIKE %s OR group_name LIKE %s)' . $filter_sql,
+			array_merge( array( $like_val, $like_val ), $filter_args ),
+			'market_price DESC',
+		);
 
-		if ( ! empty( $filters['category_id'] ) ) {
-			$where .= ' AND category_id = %d';
-			$args[] = (int) $filters['category_id'];
-		}
-		if ( ! empty( $filters['group_id'] ) ) {
-			$where .= ' AND group_id = %d';
-			$args[] = (int) $filters['group_id'];
-		}
-		if ( ! empty( $filters['rarity'] ) ) {
-			$where .= ' AND rarity = %s';
-			$args[] = sanitize_text_field( $filters['rarity'] );
-		}
-
-		$sql = $wpdb->prepare( "SELECT * FROM {$table} WHERE {$where} ORDER BY market_price DESC, name ASC LIMIT %d OFFSET %d", array_merge( $args, array( $limit, $offset ) ) );
-		$results = $wpdb->get_results( $sql, ARRAY_A );
-
-		// Fallback to LIKE if FULLTEXT yields no results
-		if ( empty( $results ) ) {
-			$like_val   = '%' . $wpdb->esc_like( strtolower( $trimmed ) ) . '%';
-			$like_where = '(clean_name LIKE %s OR group_name LIKE %s)';
-			$like_args  = array( $like_val, $like_val );
-			if ( ! empty( $filters['category_id'] ) ) {
-				$like_where .= ' AND category_id = %d';
-				$like_args[] = (int) $filters['category_id'];
-			}
-			if ( ! empty( $filters['group_id'] ) ) {
-				$like_where .= ' AND group_id = %d';
-				$like_args[] = (int) $filters['group_id'];
-			}
-			$like_sql = $wpdb->prepare( "SELECT * FROM {$table} WHERE {$like_where} ORDER BY market_price DESC LIMIT %d OFFSET %d", array_merge( $like_args, array( $limit, $offset ) ) );
-			$results  = $wpdb->get_results( $like_sql, ARRAY_A );
-		}
-
-		return self::format_card_rows( $results ?: array() );
+		return $plans;
 	}
 
 	/**
-	 * Count total cards matching query and filters.
+	 * Pick the search path once, from the total matching rows rather than from the current page.
+	 *
+	 * The first plan with at least one matching row wins, so page N of a query uses the same
+	 * path (and the same WHERE clause) as page 1 and as the count. If no plan matches, the
+	 * last plan (LIKE, or the only plan for an empty query) is returned with total 0.
+	 *
+	 * @param string $trimmed Trimmed user query.
+	 * @param array  $filters Optional filters.
+	 * @return array Plan with keys where, args, order, total.
+	 */
+	private static function resolve_search_plan( string $trimmed, array $filters ): array {
+		global $wpdb;
+		$table = self::get_table_name();
+		$plans = self::build_search_plans( $trimmed, $filters );
+		$last  = count( $plans ) - 1;
+
+		foreach ( $plans as $i => $plan ) {
+			list( $where, $args, $order ) = $plan;
+			$count_sql = "SELECT COUNT(*) FROM {$table} WHERE {$where}";
+			$total     = (int) $wpdb->get_var( empty( $args ) ? $count_sql : $wpdb->prepare( $count_sql, $args ) );
+			if ( $total > 0 || $i === $last ) {
+				return array( 'where' => $where, 'args' => $args, 'order' => $order, 'total' => $total );
+			}
+		}
+
+		return array( 'where' => '1=1', 'args' => array(), 'order' => 'id', 'total' => 0 );
+	}
+
+	/**
+	 * Count total cards matching query and filters, using the same path search_cards picks.
 	 *
 	 * @param string $query User search string.
 	 * @param array  $filters Optional filters.
 	 * @return int Total count.
 	 */
 	public static function count_cards( string $query = '', array $filters = array() ): int {
-		global $wpdb;
-		$table   = self::get_table_name();
-		$trimmed = trim( $query );
-
-		if ( empty( $trimmed ) ) {
-			$where = '1=1';
-			$args  = array();
-			if ( ! empty( $filters['category_id'] ) ) {
-				$where .= ' AND category_id = %d';
-				$args[] = (int) $filters['category_id'];
-			}
-			if ( ! empty( $filters['group_id'] ) ) {
-				$where .= ' AND group_id = %d';
-				$args[] = (int) $filters['group_id'];
-			}
-			if ( ! empty( $filters['rarity'] ) ) {
-				$where .= ' AND rarity = %s';
-				$args[] = sanitize_text_field( $filters['rarity'] );
-			}
-			$sql = empty( $args ) ? "SELECT COUNT(*) FROM {$table}" : $wpdb->prepare( "SELECT COUNT(*) FROM {$table} WHERE {$where}", $args );
-			return (int) $wpdb->get_var( $sql );
-		}
-
-		$terms = array_filter( explode( ' ', $trimmed ), fn( $t ) => strlen( trim( $t ) ) > 0 );
-		$ft_query = '';
-		foreach ( $terms as $term ) {
-			$cleaned_term = preg_replace( '/[+\-><()~*\"@]+/', '', $term );
-			if ( strlen( $cleaned_term ) > 0 ) {
-				$ft_query .= '+' . $cleaned_term . '* ';
-			}
-		}
-		$ft_query = trim( $ft_query );
-
-		$where = 'MATCH(name, clean_name, group_name) AGAINST(%s IN BOOLEAN MODE)';
-		$args  = array( $ft_query );
-		if ( ! empty( $filters['category_id'] ) ) {
-			$where .= ' AND category_id = %d';
-			$args[] = (int) $filters['category_id'];
-		}
-		if ( ! empty( $filters['group_id'] ) ) {
-			$where .= ' AND group_id = %d';
-			$args[] = (int) $filters['group_id'];
-		}
-		if ( ! empty( $filters['rarity'] ) ) {
-			$where .= ' AND rarity = %s';
-			$args[] = sanitize_text_field( $filters['rarity'] );
-		}
-
-		$count = (int) $wpdb->get_var( $wpdb->prepare( "SELECT COUNT(*) FROM {$table} WHERE {$where}", $args ) );
-		if ( $count === 0 ) {
-			$like_val   = '%' . $wpdb->esc_like( strtolower( $trimmed ) ) . '%';
-			$like_where = '(clean_name LIKE %s OR group_name LIKE %s)';
-			$like_args  = array( $like_val, $like_val );
-			if ( ! empty( $filters['category_id'] ) ) {
-				$like_where .= ' AND category_id = %d';
-				$like_args[] = (int) $filters['category_id'];
-			}
-			if ( ! empty( $filters['group_id'] ) ) {
-				$like_where .= ' AND group_id = %d';
-				$like_args[] = (int) $filters['group_id'];
-			}
-			$count = (int) $wpdb->get_var( $wpdb->prepare( "SELECT COUNT(*) FROM {$table} WHERE {$like_where}", $like_args ) );
-		}
-		return $count;
+		return self::resolve_search_plan( trim( $query ), $filters )['total'];
 	}
 
 	/**
@@ -671,10 +611,12 @@ class Card_Vault_Catalog_DB {
 	 * - Graded prices (psa9/psa10/bgs95/cgc10) and pricing_source keep the stored value when the
 	 *   incoming value is NULL, so a tcgcsv resync does not wipe PriceCharting comps.
 	 *
-	 * The return value counts rows sent, not rows MySQL changed, and $wpdb->query errors are not reported.
+	 * A chunk whose query returns false is logged with $wpdb->last_error and not counted; later chunks
+	 * are still attempted. The return value counts rows in chunks that did not fail, not rows MySQL
+	 * changed, so a value below count( $cards ) means at least one chunk failed.
 	 *
 	 * @param array $cards Array of card associative arrays.
-	 * @return int Number of cards sent to MySQL.
+	 * @return int Number of cards in chunks whose query did not fail.
 	 */
 	public static function batch_upsert_cards( array $cards ): int {
 		global $wpdb;
@@ -733,7 +675,11 @@ class Card_Vault_Catalog_DB {
 			if ( ! empty( $update_clauses ) ) {
 				$query .= ' ON DUPLICATE KEY UPDATE ' . implode( ', ', $update_clauses );
 			}
-			$wpdb->query( empty( $values ) ? $query : $wpdb->prepare( $query, $values ) );
+			$result = $wpdb->query( empty( $values ) ? $query : $wpdb->prepare( $query, $values ) );
+			if ( false === $result ) {
+				error_log( 'Card Vault batch_upsert_cards: chunk of ' . count( $chunk ) . ' rows failed: ' . $wpdb->last_error );
+				continue;
+			}
 			$total_inserted += count( $chunk );
 		}
 

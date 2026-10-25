@@ -6,6 +6,7 @@
 
 import { harness } from '../../xophz-compass/tests/harness/test-framework.mjs';
 import './card-vault.test.mjs';
+import './catalog-db.test.mjs';
 import './payout-reversals.test.mjs';
 
 const results = await harness.run();

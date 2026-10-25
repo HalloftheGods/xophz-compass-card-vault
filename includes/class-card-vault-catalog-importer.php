@@ -519,7 +519,14 @@ class Card_Vault_Catalog_Importer {
 			}
 
 			if ( ! empty( $cards_batch ) ) {
-				Card_Vault_Catalog_DB::batch_upsert_cards( $cards_batch );
+				$stored = Card_Vault_Catalog_DB::batch_upsert_cards( $cards_batch );
+				if ( $stored < $count ) {
+					return array(
+						'success' => false,
+						'imported_count' => $stored,
+						'error' => sprintf( 'Stored %d of %d cards for set %d; the set was not marked synced. See the PHP error log.', $stored, $count, $group_id ),
+					);
+				}
 
 				// Update sync sets record in database
 				global $wpdb;
