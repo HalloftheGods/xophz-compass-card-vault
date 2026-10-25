@@ -37,6 +37,8 @@ export const consignorDialogTemplate = `
               <x-text-field
                 v-model.number="newConsignor.default_split_rate"
                 label="Consignor Payout Split (%)"
+                placeholder="Blank uses the store default"
+                persistent-placeholder
                 density="compact"
                 variant="outlined"
                 prepend-inner-icon="fad fa-percent"

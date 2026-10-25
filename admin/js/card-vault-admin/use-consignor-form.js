@@ -2,6 +2,8 @@
  * Register Consignor dialog: form state and createConsignor().
  * createConsignor() requires a name, posts the form to /consignors, and on success closes the
  * dialog, resets the form and reloads Dealer HQ data through refresh(). Failures show a toast.
+ * The split rate starts blank: the server stores the store's default split rate setting
+ * (Settings > Card Vault) for a blank rate.
  */
 import { cardVaultRequest } from "./card-vault-rest.js";
 
@@ -11,7 +13,7 @@ const blankConsignor = () => ({
   name: "",
   email: "",
   phone: "",
-  default_split_rate: 85,
+  default_split_rate: null,
   payout_method: "Cash",
   payout_handle: "",
   notes: ""

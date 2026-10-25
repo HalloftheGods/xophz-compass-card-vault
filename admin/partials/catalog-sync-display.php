@@ -281,8 +281,15 @@ $progress_pct          = $total_groups_manifest > 0 ? min( 100, round( ( $comple
 			<div style="margin-bottom: 20px;">
 				<h4 style="margin: 0 0 10px 0; color: #1e293b;"><?php esc_html_e( '1. Active Games / Categories', 'xophz-compass-card-vault' ); ?></h4>
 				<p style="font-size: 13px; color: #64748b; margin: 0 0 14px 0;">
-					Select the card games your store inventories. Unchecked games will never be crawled or stored in MySQL.
+					Select the card games your store inventories. Unchecked games will never be crawled or stored in MySQL. Select at least one game.
 				</p>
+				<?php if ( empty( $all_categories ) ) : ?>
+					<p style="font-size: 13px; color: #92400e; margin: 0 0 14px 0;">
+						<?php esc_html_e( 'The game list could not be loaded from tcgcsv.com. Saving this form keeps your current game selection unchanged.', 'xophz-compass-card-vault' ); ?>
+					</p>
+				<?php else : ?>
+					<input type="hidden" name="categories_rendered" value="1">
+				<?php endif; ?>
 
 				<div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px;">
 					<?php

@@ -10,6 +10,8 @@ if ( ! defined( 'WPINC' ) ) {
 	die;
 }
 
+require_once __DIR__ . '/class-card-vault-admin-form-input.php';
+
 class Card_Vault_Admin {
 
 	/**
@@ -58,8 +60,12 @@ class Card_Vault_Admin {
 		register_setting( 'xophz_compass_card_vault_options', 'xophz_compass_card_vault_load_page_id' );
 		register_setting( 'xophz_compass_card_vault_options', 'xophz_compass_card_vault_cash_buyout_pct' );
 		register_setting( 'xophz_compass_card_vault_options', 'xophz_compass_card_vault_trade_buyout_pct' );
-		register_setting( 'xophz_compass_card_vault_options', 'xophz_compass_card_vault_default_split_rate' );
-		register_setting( 'xophz_compass_card_vault_options', 'xophz_compass_card_vault_auto_sync_wc' );
+		register_setting( 'xophz_compass_card_vault_options', Card_Vault_Consignments::DEFAULT_SPLIT_RATE_OPTION, array(
+			'sanitize_callback' => array( 'Card_Vault_Admin_Form_Input', 'sanitize_split_rate' ),
+		) );
+		register_setting( 'xophz_compass_card_vault_options', 'xophz_compass_card_vault_auto_sync_wc', array(
+			'sanitize_callback' => array( 'Card_Vault_Admin_Form_Input', 'sanitize_checkbox' ),
+		) );
 		register_setting( 'xophz_compass_card_vault_options', 'xophz_compass_card_vault_allow_community' );
 		register_setting( 'xophz_compass_card_vault_options', 'xophz_compass_card_vault_min_intake_value' );
 		register_setting( 'xophz_compass_card_vault_options', 'xophz_compass_card_vault_store_credit_bonus' );
@@ -261,16 +267,7 @@ class Card_Vault_Admin {
 				wp_die( esc_html__( 'Permission denied.', 'xophz-compass-card-vault' ) );
 			}
 
-			$result = Card_Vault_Consignments::create_consignor( array(
-				'name'               => $_POST['name'] ?? '',
-				'email'              => $_POST['email'] ?? '',
-				'phone'              => $_POST['phone'] ?? '',
-				'wp_user_id'         => ! empty( $_POST['wp_user_id'] ) ? (int) $_POST['wp_user_id'] : 0,
-				'default_split_rate' => ! empty( $_POST['default_split_rate'] ) ? floatval( $_POST['default_split_rate'] ) : 85.00,
-				'payout_method'      => $_POST['payout_method'] ?? 'Cash',
-				'payout_handle'      => $_POST['payout_handle'] ?? '',
-				'notes'              => $_POST['notes'] ?? '',
-			) );
+			$result = Card_Vault_Consignments::create_consignor( Card_Vault_Admin_Form_Input::consignor_fields( $_POST ) );
 
 			$redirect_url = add_query_arg(
 				array(
@@ -291,12 +288,11 @@ class Card_Vault_Admin {
 				wp_die( esc_html__( 'Permission denied.', 'xophz-compass-card-vault' ) );
 			}
 
-			$payout_id   = ! empty( $_POST['payout_id'] ) ? (int) $_POST['payout_id'] : 0;
-			$method      = sanitize_text_field( $_POST['payment_method'] ?? 'Cash' );
-			$reference   = sanitize_text_field( $_POST['payment_reference'] ?? '' );
+			$payout_id = ! empty( $_POST['payout_id'] ) ? (int) $_POST['payout_id'] : 0;
+			$payment   = Card_Vault_Admin_Form_Input::payout_payment( $_POST );
 
 			if ( $payout_id > 0 ) {
-				Card_Vault_Consignments::mark_payout_paid( $payout_id, $method, $reference );
+				Card_Vault_Consignments::mark_payout_paid( $payout_id, $payment['method'], $payment['reference'] );
 			}
 
 			$redirect_url = add_query_arg(
@@ -319,19 +315,19 @@ class Card_Vault_Admin {
 				wp_die( esc_html__( 'Permission denied.', 'xophz-compass-card-vault' ) );
 			}
 
-			$categories = isset( $_POST['categories'] ) && is_array( $_POST['categories'] )
-				? array_map( 'intval', $_POST['categories'] )
-				: array( 3 );
-			$sets_scope = isset( $_POST['sets_scope'] ) ? sanitize_text_field( $_POST['sets_scope'] ) : '25';
+			$selection  = Card_Vault_Admin_Form_Input::catalog_categories( $_POST );
+			$sets_scope = isset( $_POST['sets_scope'] ) ? sanitize_text_field( wp_unslash( $_POST['sets_scope'] ) ) : '25';
 
-			Card_Vault_Catalog_DB::set_selected_categories( $categories );
+			if ( null !== $selection['categories'] ) {
+				Card_Vault_Catalog_DB::set_selected_categories( $selection['categories'] );
+			}
 			Card_Vault_Catalog_DB::set_sets_scope( $sets_scope );
 
 			$redirect_url = add_query_arg(
 				array(
 					'page'   => 'xophz-compass-card-vault',
 					'tab'    => 'catalog',
-					'cv_msg' => 'catalog_saved',
+					'cv_msg' => $selection['msg'],
 				),
 				admin_url( 'admin.php' )
 			);
@@ -410,7 +406,7 @@ class Card_Vault_Admin {
 		$load_page_id    = (int) get_option( 'xophz_compass_card_vault_load_page_id', 0 );
 		$cash_buyout     = (int) get_option( 'xophz_compass_card_vault_cash_buyout_pct', 70 );
 		$trade_buyout    = (int) get_option( 'xophz_compass_card_vault_trade_buyout_pct', 80 );
-		$def_split_rate  = (float) get_option( 'xophz_compass_card_vault_default_split_rate', 85.0 );
+		$def_split_rate  = Card_Vault_Consignments::get_default_split_rate();
 		$auto_sync_wc    = get_option( 'xophz_compass_card_vault_auto_sync_wc', '1' );
 		$pages           = get_pages();
 		$wc_active       = Card_Vault_WC_Sync::is_wc_active();
@@ -484,21 +480,21 @@ class Card_Vault_Admin {
 						<th scope="row"><?php esc_html_e( 'Trade Desk Cash Buyout %', 'xophz-compass-card-vault' ); ?></th>
 						<td>
 							<input type="number" name="xophz_compass_card_vault_cash_buyout_pct" value="<?php echo esc_attr( $cash_buyout ); ?>" min="10" max="100" class="small-text" /> %
-							<p class="description"><?php esc_html_e( 'Default percentage of retail market comp offered for cash card buyouts (default: 70%).', 'xophz-compass-card-vault' ); ?></p>
+							<p class="description"><?php esc_html_e( 'Stored for the Trade Desk (default: 70%). Nothing in Card Vault applies this value yet: the POS Lot Buyout calculator uses its own percentages.', 'xophz-compass-card-vault' ); ?></p>
 						</td>
 					</tr>
 					<tr valign="top">
 						<th scope="row"><?php esc_html_e( 'Trade Desk Trade Credit %', 'xophz-compass-card-vault' ); ?></th>
 						<td>
 							<input type="number" name="xophz_compass_card_vault_trade_buyout_pct" value="<?php echo esc_attr( $trade_buyout ); ?>" min="10" max="100" class="small-text" /> %
-							<p class="description"><?php esc_html_e( 'Default percentage of retail market comp offered for trade credit buyouts (default: 80%).', 'xophz-compass-card-vault' ); ?></p>
+							<p class="description"><?php esc_html_e( 'Stored for the Trade Desk (default: 80%). Nothing in Card Vault applies this value yet: the POS Lot Buyout calculator uses its own percentages.', 'xophz-compass-card-vault' ); ?></p>
 						</td>
 					</tr>
 					<tr valign="top">
 						<th scope="row"><?php esc_html_e( 'Default Consignor Split Rate %', 'xophz-compass-card-vault' ); ?></th>
 						<td>
 							<input type="number" step="0.5" name="xophz_compass_card_vault_default_split_rate" value="<?php echo esc_attr( $def_split_rate ); ?>" min="50" max="99" class="small-text" /> %
-							<p class="description"><?php esc_html_e( 'Default consignor payout split percentage (e.g. 85% means consignor receives 85%, store retains 15%).', 'xophz-compass-card-vault' ); ?></p>
+							<p class="description"><?php esc_html_e( 'Consignor payout split (e.g. 85% means the consignor receives 85% and the store keeps 15%). Applied to consignors registered without a rate of their own, and to consigned sales when neither the item nor its consignor has a rate. Consignors that already have a rate keep it. Community intake batches use the intake split instead.', 'xophz-compass-card-vault' ); ?></p>
 						</td>
 					</tr>
 					<tr valign="top">
@@ -506,8 +502,9 @@ class Card_Vault_Admin {
 						<td>
 							<label>
 								<input type="checkbox" name="xophz_compass_card_vault_auto_sync_wc" value="1" <?php checked( '1', $auto_sync_wc ); ?> />
-								<?php esc_html_e( 'Automatically register physical card inventory as WooCommerce products and auto-delist when sold offline at card shows.', 'xophz-compass-card-vault' ); ?>
+								<?php esc_html_e( 'Create and update WooCommerce products from Card Vault inventory (POS sync and accepted intake batches).', 'xophz-compass-card-vault' ); ?>
 							</label>
+							<p class="description"><?php esc_html_e( 'When unticked, Card Vault creates and updates no WooCommerce products. Products that already exist still have their stock lowered, and are delisted at zero, when the card sells offline, so they cannot be sold twice.', 'xophz-compass-card-vault' ); ?></p>
 							<p class="description">
 								<?php
 								if ( $wc_active ) {

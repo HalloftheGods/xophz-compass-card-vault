@@ -15,6 +15,30 @@ require_once __DIR__ . '/class-card-vault-payout-reversals.php';
 class Card_Vault_Consignments {
 
 	/**
+	 * Option behind Settings > Card Vault > "Default Consignor Split Rate %".
+	 */
+	const DEFAULT_SPLIT_RATE_OPTION = 'xophz_compass_card_vault_default_split_rate';
+
+	/**
+	 * Split rate used when the setting above is unset or not a number.
+	 */
+	const FALLBACK_SPLIT_RATE = 85.00;
+
+	/**
+	 * The store's default consignor split rate: the saved setting rounded to 2 decimals and
+	 * bounded to 0-100, or 85.00 when the setting is unset or not a number.
+	 *
+	 * @return float
+	 */
+	public static function get_default_split_rate() {
+		$raw = get_option( self::DEFAULT_SPLIT_RATE_OPTION, '' );
+		if ( ! is_numeric( $raw ) ) {
+			return self::FALLBACK_SPLIT_RATE;
+		}
+		return max( 0.0, min( 100.0, round( (float) $raw, 2 ) ) );
+	}
+
+	/**
 	 * Get the consignments table name.
 	 *
 	 * @return string
@@ -166,7 +190,10 @@ class Card_Vault_Consignments {
 		$name               = sanitize_text_field( $data['name'] );
 		$email              = isset( $data['email'] ) ? sanitize_email( $data['email'] ) : '';
 		$phone              = isset( $data['phone'] ) ? sanitize_text_field( $data['phone'] ) : '';
-		$default_split_rate = isset( $data['default_split_rate'] ) ? floatval( $data['default_split_rate'] ) : 85.00;
+		// A missing, blank or non-numeric rate takes the store's default split rate setting.
+		$default_split_rate = ( isset( $data['default_split_rate'] ) && is_numeric( $data['default_split_rate'] ) )
+			? floatval( $data['default_split_rate'] )
+			: self::get_default_split_rate();
 		if ( $default_split_rate < 0 || $default_split_rate > 100 ) {
 			return new WP_Error( 'invalid_split_rate', __( 'Split rate must be between 0 and 100.', 'xophz-compass-card-vault' ) );
 		}
@@ -326,14 +353,15 @@ class Card_Vault_Consignments {
 
 		// Split rate: a positive per-item rate from the caller wins. Callers omit the key
 		// (or pass null) when the item has no rate of its own, so the consignor's
-		// default_split_rate applies, and 85.00 only when the consignor has none.
+		// default_split_rate applies, and the store's default split rate setting only when the
+		// consignor has none.
 		$item_split_rate = $payout_data['consignor_split_rate'] ?? null;
 		if ( is_numeric( $item_split_rate ) && (float) $item_split_rate > 0 ) {
 			$split_rate = floatval( $item_split_rate );
 		} elseif ( $consignor && isset( $consignor['default_split_rate'] ) && is_numeric( $consignor['default_split_rate'] ) && (float) $consignor['default_split_rate'] > 0 ) {
 			$split_rate = floatval( $consignor['default_split_rate'] );
 		} else {
-			$split_rate = 85.00;
+			$split_rate = self::get_default_split_rate();
 		}
 
 		// Round once so the stored decimal(5,2) rate matches the rate used here, then bound it.

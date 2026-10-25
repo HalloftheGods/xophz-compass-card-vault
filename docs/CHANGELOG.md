@@ -3,6 +3,17 @@
 All notable changes to this WordPress plugin submodule will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [2026-10-25]
+
+### Fixed
+- **The Default Consignor Split Rate setting applies (`Card_Vault_Consignments::get_default_split_rate`, #6589)**: consignors registered without a rate (Dealer HQ form, Compass dialog, `POST /consignors`) get the saved setting instead of 85%, and `record_payout` uses it when neither the item nor the consignor has a rate. 85% applies only while the setting is unset or not a number. The setting is rounded to 2 decimals and bounded to 0 to 100 on save. Community intake batches still use the intake split (`default_consignor_split`, 80% by default).
+- **Unticking WooCommerce Auto-Sync stops product creation (`Card_Vault_WC_Sync::is_auto_sync_enabled`, #6589)**: `sync_inventory_item` then creates and updates nothing and returns 0, so the POS offline queue does not retry forever; `POST /sync/delta` counts such items in `syncedInventory`. Stock decreases and delisting of products that already exist still run. A setting never saved counts as ticked.
+- **Admin forms unslash `$_POST` (`Card_Vault_Admin_Form_Input`, #6589)**: a consignor named O'Brien, or a payout reference with an apostrophe, is stored without a backslash, the same as through the REST API.
+- **Saving catalog preferences no longer resets the game selection to Pokemon (#6589)**: when the game list could not be loaded from tcgcsv.com the saved selection is kept, and saving with no game ticked keeps the saved selection and shows a warning (the catalog reads an empty selection as Pokemon, so it is not stored).
+
+### Changed
+- **Settings > Card Vault descriptions say what each field does (#6589)**: the Trade Desk cash and trade credit percentages are labelled as stored but not yet applied by anything in Card Vault.
+
 ## [2026-10-24]
 
 ### Changed

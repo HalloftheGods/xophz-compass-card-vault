@@ -71,6 +71,18 @@ class Card_Vault_WC_Sync {
 	}
 
 	/**
+	 * Whether Settings > Card Vault > "WooCommerce Auto-Sync & Delist" allows sync_inventory_item()
+	 * to create and update WooCommerce products. A setting that was never saved counts as on
+	 * (the checkbox's default); a saved '0' or '' counts as off. It does not gate the stock
+	 * decrease and delisting of products that already exist when a card sells offline.
+	 *
+	 * @return bool
+	 */
+	public static function is_auto_sync_enabled() {
+		return ! empty( get_option( 'xophz_compass_card_vault_auto_sync_wc', '1' ) );
+	}
+
+	/**
 	 * Find a WooCommerce product ID by its Card Vault client inventory UUID.
 	 *
 	 * @param string $vault_id Client inventory item UUID.
@@ -130,12 +142,19 @@ class Card_Vault_WC_Sync {
 	 * Synchronize an active inventory card to WooCommerce product CPT.
 	 * Only active inventory items with quantity > 0 are published to prevent catalog bloat.
 	 *
+	 * When auto-sync is turned off in settings it creates and updates nothing and returns 0, so
+	 * callers that queue retries on a WP_Error (the POS offline queue) do not retry forever.
+	 *
 	 * @param array $item Inventory item details.
-	 * @return int|WP_Error Product ID or WP_Error.
+	 * @return int|WP_Error Product ID, 0 when auto-sync is off, or WP_Error.
 	 */
 	public static function sync_inventory_item( $item ) {
 		if ( ! self::is_wc_active() ) {
 			return new WP_Error( 'wc_inactive', __( 'WooCommerce is not active.', 'xophz-compass-card-vault' ) );
+		}
+
+		if ( ! self::is_auto_sync_enabled() ) {
+			return 0;
 		}
 
 		if ( empty( $item['id'] ) ) {

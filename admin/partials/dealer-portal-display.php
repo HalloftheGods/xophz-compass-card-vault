@@ -48,6 +48,8 @@ $app_url      = home_url( '/' . $slug );
 			'crawler_stepped'     => array( 'success', __( 'Stepped forward: Ingested 1 set successfully.', 'xophz-compass-card-vault' ) ),
 			'crawler_step_failed' => array( 'error', __( 'Step failed or queue is empty.', 'xophz-compass-card-vault' ) ),
 			'catalog_saved'       => array( 'success', __( 'Catalog preferences saved successfully.', 'xophz-compass-card-vault' ) ),
+			'catalog_saved_categories_kept' => array( 'warning', __( 'Set scope saved. The game list could not be loaded, so your saved game selection was kept unchanged.', 'xophz-compass-card-vault' ) ),
+			'catalog_no_category' => array( 'warning', __( 'Select at least one game. Your saved game selection was kept unchanged; the set scope was saved.', 'xophz-compass-card-vault' ) ),
 			'consignor_added'     => array( 'success', __( 'Consignor registered successfully.', 'xophz-compass-card-vault' ) ),
 			'payout_marked_paid'  => array( 'success', __( 'Payout marked as paid.', 'xophz-compass-card-vault' ) ),
 		);
@@ -196,8 +198,8 @@ $app_url      = home_url( '/' . $slug );
 
 						<p>
 							<label for="cv_split"><strong>Default Split Rate (%)</strong></label><br>
-							<input type="number" step="0.1" min="0" max="100" id="cv_split" name="default_split_rate" value="85.0" class="widefat" />
-							<span style="font-size: 11px; color: #64748b;">Consignor receives this percentage of gross sale.</span>
+							<input type="number" step="0.1" min="0" max="100" id="cv_split" name="default_split_rate" value="<?php echo esc_attr( number_format( Card_Vault_Consignments::get_default_split_rate(), 1, '.', '' ) ); ?>" class="widefat" />
+							<span style="font-size: 11px; color: #64748b;">Consignor receives this percentage of gross sale. Prefilled from Settings &gt; Card Vault; blank or 0 uses that store default.</span>
 						</p>
 
 						<p>

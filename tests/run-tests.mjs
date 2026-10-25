@@ -21,6 +21,7 @@ import './show-bid-counter.test.mjs';
 import './showcase-top-bids.test.mjs';
 import './turnstile-token.test.mjs';
 import './dealer-hq-clawback.test.mjs';
+import './admin-settings.test.mjs';
 
 const results = await harness.run();
 if (results.failed > 0) {

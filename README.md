@@ -10,10 +10,10 @@ Offline-first Trade Desk, POS, optical grading, multi-consignor accounting, and 
      - `unpaid`: credited, not settled. `paid`: settled. Settling (`POST /payouts/settle`, Dealer HQ "Mark Paid") takes the integer payout `id`, only moves an `unpaid` row, and fails when no row changed, so a second settle of the same payout is refused.
      - `void`: the sale was cancelled, failed or refunded before settlement. The row keeps its amounts for audit and counts toward no totals.
      - `clawback`: a separate row (`<sale_record_id>_clawback`) with negative amounts for a sale refunded or cancelled after settlement. Minus its `consignor_payout_amount` is what the consignor owes back (`clawback_due` / `total_clawback_due` in the summaries). It is a record only: no money moves.
-     - Split rate: the item's own rate when it has one, else the consignor's `default_split_rate`, else 85%.
+     - Split rate: the item's own rate when it has one, else the consignor's `default_split_rate`, else the store's "Default Consignor Split Rate %" setting (`xophz_compass_card_vault_default_split_rate`), else 85% when that setting is unset. A consignor registered without a rate gets the same setting.
 
 2. **WooCommerce Product Sync & Auto-Delist Protection**:
-   - Synchronizes active inventory items into WooCommerce `product` CPTs.
+   - Synchronizes active inventory items into WooCommerce `product` CPTs while Settings > Card Vault > "WooCommerce Auto-Sync & Delist" is ticked (the default). Unticked, `sync_inventory_item()` creates and updates no product and returns 0; stock decreases and delisting of existing products still run.
    - Automatically delists sold products when physical card show transactions decrement stock to zero (`stock_status = outofstock`, `status = draft`, `visibility = hidden`).
    - Credits consignor payouts on `woocommerce_order_status_completed` (not at `processing`); Card Vault POS tenders credit at the register by calling `Card_Vault_WC_Sync::handle_order_completed()` directly.
    - Reverses credits (`includes/class-card-vault-payout-reversals.php`): `woocommerce_order_status_cancelled`, `_refunded` and `_failed` void unpaid credits and record clawbacks for settled ones; `woocommerce_order_refunded` reduces each consigned line to what is left after the refunds WooCommerce allocated to it. Amount-only refunds that are not allocated to a line item change no payout.
