@@ -23,6 +23,11 @@ class Card_Vault_Products {
 	const META_PRODUCT_TYPE = '_card_vault_product_type';
 
 	/**
+	 * Largest decoded imageData accepted by save_product, in bytes.
+	 */
+	const MAX_IMAGE_BYTES = 5242880;
+
+	/**
 	 * Retrieve products using WooCommerce product queries.
 	 *
 	 * @param array $args Query parameters.
@@ -77,30 +82,40 @@ class Card_Vault_Products {
 				continue;
 			}
 
-			$thumb_id  = $p->get_image_id();
-			$thumb_url = $thumb_id ? wp_get_attachment_image_url( $thumb_id, 'medium' ) : '';
-
-			$products[] = array(
-				'id'            => $p->get_id(),
-				'title'         => $p->get_name(),
-				'sku'           => $p->get_sku(),
-				'price'         => floatval( $p->get_price() ),
-				'regularPrice'  => floatval( $p->get_regular_price() ),
-				'salePrice'     => $p->get_sale_price() ? floatval( $p->get_sale_price() ) : null,
-				'stock'         => $p->get_stock_quantity() !== null ? intval( $p->get_stock_quantity() ) : 0,
-				'stockStatus'   => $p->get_stock_status(),
-				'manageStock'   => $p->managing_stock(),
-				'thumb'         => $thumb_url,
-				'barcode'       => get_post_meta( $p->get_id(), self::META_BARCODE, true ) ?: '',
-				'productType'   => get_post_meta( $p->get_id(), self::META_PRODUCT_TYPE, true ) ?: 'single',
-				'categories'    => wp_get_post_terms( $p->get_id(), 'product_cat', array( 'fields' => 'names' ) ),
-				'vaultId'       => get_post_meta( $p->get_id(), Card_Vault_WC_Sync::META_VAULT_ID, true ) ?: '',
-			);
+			$products[] = self::format_product( $p );
 		}
 
 		return array(
 			'total'    => $total,
 			'products' => $products,
+		);
+	}
+
+	/**
+	 * Map a WooCommerce product to the Card Vault product shape.
+	 *
+	 * @param WC_Product $p Product.
+	 * @return array
+	 */
+	private static function format_product( $p ): array {
+		$thumb_id  = $p->get_image_id();
+		$thumb_url = $thumb_id ? wp_get_attachment_image_url( $thumb_id, 'medium' ) : '';
+
+		return array(
+			'id'            => $p->get_id(),
+			'title'         => $p->get_name(),
+			'sku'           => $p->get_sku(),
+			'price'         => floatval( $p->get_price() ),
+			'regularPrice'  => floatval( $p->get_regular_price() ),
+			'salePrice'     => $p->get_sale_price() ? floatval( $p->get_sale_price() ) : null,
+			'stock'         => $p->get_stock_quantity() !== null ? intval( $p->get_stock_quantity() ) : 0,
+			'stockStatus'   => $p->get_stock_status(),
+			'manageStock'   => $p->managing_stock(),
+			'thumb'         => $thumb_url,
+			'barcode'       => get_post_meta( $p->get_id(), self::META_BARCODE, true ) ?: '',
+			'productType'   => get_post_meta( $p->get_id(), self::META_PRODUCT_TYPE, true ) ?: 'single',
+			'categories'    => wp_get_post_terms( $p->get_id(), 'product_cat', array( 'fields' => 'names' ) ),
+			'vaultId'       => get_post_meta( $p->get_id(), Card_Vault_WC_Sync::META_VAULT_ID, true ) ?: '',
 		);
 	}
 
@@ -140,12 +155,17 @@ class Card_Vault_Products {
 
 		if ( isset( $payload['salePrice'] ) && $payload['salePrice'] !== '' ) {
 			$product->set_sale_price( wc_format_decimal( $payload['salePrice'] ) );
-		} else {
+		} elseif ( array_key_exists( 'salePrice', $payload ) ) {
+			// Only an explicit empty/null salePrice clears the sale price.
 			$product->set_sale_price( '' );
 		}
 
 		if ( isset( $payload['sku'] ) && ! empty( $payload['sku'] ) ) {
-			$product->set_sku( sanitize_text_field( $payload['sku'] ) );
+			try {
+				$product->set_sku( sanitize_text_field( $payload['sku'] ) );
+			} catch ( WC_Data_Exception $e ) {
+				return new WP_Error( $e->getErrorCode(), $e->getMessage(), array( 'status' => 400 ) );
+			}
 		}
 
 		if ( isset( $payload['manageStock'] ) ) {
@@ -167,30 +187,45 @@ class Card_Vault_Products {
 
 		// Handle base64 image data upload matching Bazaar
 		if ( ! empty( $payload['imageData'] ) ) {
-			$upload_dir = wp_upload_dir();
-			$clean_b64  = preg_replace( '#^data:image/\w+;base64,#i', '', $payload['imageData'] );
-			$image_raw  = base64_decode( $clean_b64 );
+			$clean_b64  = preg_replace( '#^data:image/\w+;base64,#i', '', (string) $payload['imageData'] );
+			$image_raw  = base64_decode( $clean_b64, true );
 
-			if ( $image_raw ) {
-				$filename   = 'cv-prod-' . time() . '-' . wp_generate_password( 6, false ) . '.png';
-				$file_path  = $upload_dir['path'] . '/' . $filename;
-				file_put_contents( $file_path, $image_raw );
+			if ( false === $image_raw || '' === $image_raw || strlen( $image_raw ) > self::MAX_IMAGE_BYTES ) {
+				return new WP_Error( 'invalid_image', __( 'imageData must be valid base64 and at most 5 MB.', 'xophz-compass-card-vault' ), array( 'status' => 400 ) );
+			}
 
-				$wp_filetype = wp_check_filetype( $filename, null );
-				$attachment  = array(
-					'post_mime_type' => $wp_filetype['type'],
-					'post_title'     => sanitize_file_name( $payload['title'] ?? $filename ),
-					'post_content'   => '',
-					'post_status'    => 'inherit',
-				);
+			$image_info = getimagesizefromstring( $image_raw );
+			$ext_by_mime = array(
+				'image/png'  => 'png',
+				'image/jpeg' => 'jpg',
+				'image/gif'  => 'gif',
+				'image/webp' => 'webp',
+			);
+			$mime = is_array( $image_info ) ? ( $image_info['mime'] ?? '' ) : '';
+			if ( ! isset( $ext_by_mime[ $mime ] ) ) {
+				return new WP_Error( 'invalid_image', __( 'imageData must be a PNG, JPEG, GIF or WebP image.', 'xophz-compass-card-vault' ), array( 'status' => 400 ) );
+			}
 
-				$attach_id = wp_insert_attachment( $attachment, $file_path );
-				if ( $attach_id && ! is_wp_error( $attach_id ) ) {
-					require_once ABSPATH . 'wp-admin/includes/image.php';
-					$attach_data = wp_generate_attachment_metadata( $attach_id, $file_path );
-					wp_update_attachment_metadata( $attach_id, $attach_data );
-					$product->set_image_id( $attach_id );
-				}
+			$filename = 'cv-prod-' . time() . '-' . wp_generate_password( 6, false ) . '.' . $ext_by_mime[ $mime ];
+			$upload   = wp_upload_bits( $filename, null, $image_raw );
+			if ( ! empty( $upload['error'] ) ) {
+				return new WP_Error( 'image_write_failed', __( 'Could not store the product image.', 'xophz-compass-card-vault' ), array( 'status' => 500 ) );
+			}
+			$file_path = $upload['file'];
+
+			$attachment = array(
+				'post_mime_type' => $mime,
+				'post_title'     => sanitize_file_name( $payload['title'] ?? $filename ),
+				'post_content'   => '',
+				'post_status'    => 'inherit',
+			);
+
+			$attach_id = wp_insert_attachment( $attachment, $file_path );
+			if ( $attach_id && ! is_wp_error( $attach_id ) ) {
+				require_once ABSPATH . 'wp-admin/includes/image.php';
+				$attach_data = wp_generate_attachment_metadata( $attach_id, $file_path );
+				wp_update_attachment_metadata( $attach_id, $attach_data );
+				$product->set_image_id( $attach_id );
 			}
 		} elseif ( ! empty( $payload['imageId'] ) ) {
 			$product->set_image_id( intval( $payload['imageId'] ) );
@@ -213,8 +248,8 @@ class Card_Vault_Products {
 			update_post_meta( $saved_id, self::META_PRODUCT_TYPE, sanitize_text_field( $payload['productType'] ) );
 		}
 
-		$results = self::get_products( array( 'limit' => 1, 'search' => $product->get_sku() ) );
-		return $results['products'][0] ?? array( 'id' => $saved_id );
+		$saved = wc_get_product( $saved_id );
+		return $saved ? self::format_product( $saved ) : array( 'id' => $saved_id );
 	}
 
 	/**
@@ -235,18 +270,23 @@ class Card_Vault_Products {
 			return new WP_Error( 'stock_unmanaged', __( 'Product not found or not managing stock.', 'xophz-compass-card-vault' ), array( 'status' => 400 ) );
 		}
 
-		$current = $product->get_stock_quantity();
-		$new_val = $current;
-
-		if ( 'set' === $action ) {
-			$new_val = $quantity;
-		} elseif ( 'add' === $action ) {
-			$new_val = $current + $quantity;
+		// 'increase'/'decrease' are single SQL updates, so concurrent calls do not lose updates.
+		if ( 'add' === $action ) {
+			$new_val = wc_update_product_stock( $product, $quantity, 'increase' );
 		} elseif ( 'subtract' === $action ) {
-			$new_val = max( 0, $current - $quantity );
+			$new_val = wc_update_product_stock( $product, $quantity, 'decrease' );
+			if ( is_numeric( $new_val ) && $new_val < 0 ) {
+				$new_val = wc_update_product_stock( $product, 0, 'set' );
+			}
+		} else {
+			$new_val = wc_update_product_stock( $product, $quantity, 'set' );
 		}
 
-		wc_update_product_stock( $product, $new_val, 'set' );
+		if ( false === $new_val || null === $new_val ) {
+			return new WP_Error( 'stock_update_failed', __( 'Failed to update stock.', 'xophz-compass-card-vault' ), array( 'status' => 500 ) );
+		}
+
+		$product = wc_get_product( $product_id );
 
 		return array(
 			'productId'    => $product_id,
