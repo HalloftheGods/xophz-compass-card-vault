@@ -271,6 +271,41 @@ describe('Card Vault Submodule Tests', () => {
     });
   });
 
+  describe('Products class (source-level guards, no WooCommerce runtime)', () => {
+    const src = () => readSourceFile(PLUGIN_DIR + '/includes/class-card-vault-products.php');
+    const save = () => methodBody(src(), 'save_product');
+    const stock = () => methodBody(src(), 'update_product_stock');
+
+    it('save_product turns a duplicate SKU exception into a 400 WP_Error', () => {
+      const body = save();
+      assert.ok(body.includes('catch ( WC_Data_Exception'), 'must catch WC_Data_Exception');
+      assert.ok(body.indexOf('catch ( WC_Data_Exception') > body.indexOf('set_sku'), 'catch must follow set_sku');
+    });
+
+    it('save_product clears the sale price only when salePrice is present', () => {
+      assert.ok(save().includes("array_key_exists( 'salePrice', $payload )"), 'must gate clearing on array_key_exists');
+    });
+
+    it('save_product validates, caps and safely writes image data', () => {
+      const body = save();
+      for (const needle of ['base64_decode( $clean_b64, true )', 'MAX_IMAGE_BYTES', 'getimagesizefromstring', 'wp_upload_bits']) {
+        assert.ok(body.includes(needle), 'must use ' + needle);
+      }
+      assert.ok(!body.includes('file_put_contents'), 'must not write raw bytes with file_put_contents');
+    });
+
+    it('save_product returns the saved product, not a SKU search result', () => {
+      const body = save();
+      assert.ok(body.includes('wc_get_product( $saved_id )'), 'must load by saved id');
+      assert.ok(!body.includes("'search' => $product->get_sku()"), 'must not re-query by SKU search');
+    });
+
+    it('update_product_stock uses atomic increase and decrease', () => {
+      const body = stock();
+      assert.ok(body.includes("'increase'") && body.includes("'decrease'"), 'must use increase and decrease');
+    });
+  });
+
   describe('Dealer HQ payout settlement', () => {
     it('does not hardcode Cash or a fake reference when settling', () => {
       const src = readSourceFile(PLUGIN_DIR + '/admin/js/card-vault-admin/use-payout-ledger.js');
