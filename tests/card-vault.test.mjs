@@ -246,6 +246,13 @@ describe('Card Vault Submodule Tests', () => {
       }
     });
 
+    it('license checkout drops the referral code when it resolves to the logged-in buyer', () => {
+      const body = methodBody(readSourceFile(REST_SOURCES[0].file), 'handle_license_checkout');
+      assert.ok(body, 'handle_license_checkout must be defined');
+      assert.ok(/\(int\) \$ref_user->ID !== \(int\) get_current_user_id\(\)/.test(body), 'self-referral guard must compare with the current user');
+      assert.ok(/elseif \( \$ref_user \) \{\s*[^}]*\$referral_code = '';/.test(body), 'self-referral must clear referral_code, not only referrer_id');
+    });
+
     it('permission callbacks contain the pinned login and capability checks', () => {
       for (const [id, check] of Object.entries(PERMISSION_CALLBACK_CHECKS)) {
         const [label, name] = id.split(' ');
