@@ -556,14 +556,24 @@ class Card_Vault_API {
 
 		$system_instruction = 'You are an optical trading card grading engine applying PSA, BGS, and CGC standards. Analyze the images for: centering, corners, edges, and surface. Predict an integer grade 1-10, gradeLabel (e.g. Gem Mint 10, Mint 9, Near Mint-Mint 8), subgrades (centering, corners, edges, surface), defects array (with id, title, category, severity [minor, moderate, severe], xPercent [0-100], yPercent [0-100], notes), recommendation (SUBMIT_PSA_GEM_10, SUBMIT_BGS_TRUE_GEM, or SELL_AS_NM_RAW), and overallSummary.';
 
+		// A price of 0 means the client had no price: do not feed the model made-up ROI inputs.
+		if ( $raw_price > 0 && $psa10_price > 0 && $psa9_price > 0 ) {
+			$price_text = sprintf(
+				'Raw market price: $%0.2f, PSA 10 price: $%0.2f, PSA 9 price: $%0.2f.',
+				$raw_price,
+				$psa10_price,
+				$psa9_price
+			);
+		} else {
+			$price_text = 'Market prices are unknown: set every roi dollar figure to null and state in overallSummary that ROI is unavailable.';
+		}
+
 		$prompt_text = sprintf(
-			'Perform optical grading for %s (%s #%s). Raw market price: $%0.2f, PSA 10 price: $%0.2f, PSA 9 price: $%0.2f. Output strict JSON with: predictedGrade, gradeLabel, subgrades, defects, roi, overallSummary.',
-			$card_name,
+			'Perform optical grading for %s (%s #%s). %s Output strict JSON with: predictedGrade, gradeLabel, subgrades, defects, roi, overallSummary.',
+			'' !== $card_name ? $card_name : 'an unidentified card',
 			$set_name,
 			$card_number,
-			$raw_price,
-			$psa10_price,
-			$psa9_price
+			$price_text
 		);
 		$parts[] = array( 'text' => $prompt_text );
 
