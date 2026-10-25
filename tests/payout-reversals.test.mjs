@@ -27,4 +27,30 @@ describe('Payout reversals', () => {
     `);
     assert.strictEqual(res, false, 'a refund on an already reversed order must not re-reconcile payouts');
   });
+
+  it('reconcile_payout restores a void row to unpaid only while part of the sale stands', () => {
+    const res = runPhpJson(`
+      define('ABSPATH', '/var/www/html/');
+      class Card_Vault_Consignments {
+        public static function get_payouts_table() { return 'payouts'; }
+        public static function get_payout_by_sale_record_id( $id ) {
+          return array( 'id' => 4, 'sale_record_id' => $id, 'payout_status' => 'void', 'total_sale_amount' => '85', 'quantity' => 1, 'consignor_split_rate' => '80', 'consignor_payout_amount' => '68' );
+        }
+      }
+      class Stub_Wpdb {
+        public $queries = array();
+        public function prepare( $sql, ...$args ) { return vsprintf( str_replace( array( '%f', '%d', '%s' ), array( '%s', '%s', '%s' ), $sql ), $args ); }
+        public function query( $sql ) { $this->queries[] = $sql; return 1; }
+      }
+      $GLOBALS['wpdb'] = new Stub_Wpdb();
+      function sanitize_text_field( $v ) { return $v; }
+      function current_time( $t ) { return '2026-01-01 00:00:00'; }
+      function sanitize_textarea_field( $v ) { return $v; }
+      require_once '${CONTAINER_PLUGIN_DIR}/includes/class-card-vault-payout-reversals.php';
+      $restored = Card_Vault_Payout_Reversals::reconcile_payout( 'wc_order_1_item_2', 85, 1, 'order completed again' );
+      $still    = Card_Vault_Payout_Reversals::reconcile_payout( 'wc_order_1_item_2', 0, 0, 'refund' );
+      echo json_encode( array( $restored, $still, count( $GLOBALS['wpdb']->queries ), strpos( $GLOBALS['wpdb']->queries[0], "payout_status = 'void'" ) !== false ) );
+    `);
+    assert.deepStrictEqual(res, ['restored', 'unchanged', 1, true]);
+  });
 });

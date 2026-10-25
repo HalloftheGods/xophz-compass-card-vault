@@ -83,7 +83,7 @@ class Card_Vault_WC_Sync {
 
 		$posts = get_posts( array(
 			'post_type'      => 'product',
-			'post_status'    => array( 'publish', 'draft', 'private' ),
+			'post_status'    => array( 'publish', 'draft', 'private', 'pending', 'future' ),
 			'posts_per_page' => 1,
 			'fields'         => 'ids',
 			'meta_query'     => array(
@@ -184,7 +184,11 @@ class Card_Vault_WC_Sync {
 		$card_id_slug = sanitize_title( $item['cardId'] ?? 'card' );
 		$sku_suffix   = substr( md5( $vault_id ), 0, 6 );
 		$sku          = 'CV-' . $card_id_slug . '-' . $sku_suffix;
-		$product->set_sku( $sku );
+		try {
+			$product->set_sku( $sku );
+		} catch ( WC_Data_Exception $e ) {
+			return new WP_Error( 'sku_conflict', $e->getMessage() );
+		}
 
 		// Prices
 		$asking_price = isset( $item['askingPrice'] ) ? floatval( $item['askingPrice'] ) : 0.00;
@@ -224,7 +228,11 @@ class Card_Vault_WC_Sync {
 		$product->set_short_description( $title );
 
 		// Save product to obtain ID
-		$saved_id = $product->save();
+		try {
+			$saved_id = $product->save();
+		} catch ( WC_Data_Exception $e ) {
+			return new WP_Error( 'sku_conflict', $e->getMessage() );
+		}
 		if ( ! $saved_id ) {
 			return new WP_Error( 'product_save_failed', __( 'Failed to save WooCommerce product.', 'xophz-compass-card-vault' ) );
 		}
@@ -291,10 +299,24 @@ class Card_Vault_WC_Sync {
 			);
 		}
 
-		$current_stock = (int) $product->get_stock_quantity();
-		$new_stock     = max( 0, $current_stock - (int) $quantity_sold );
-		$product->set_stock_quantity( $new_stock );
+		// Atomic SQL decrement, so a web order's stock change made at the same moment is not overwritten.
+		$new_stock = wc_update_product_stock( $product, (int) $quantity_sold, 'decrease' );
+		if ( false === $new_stock ) {
+			return array(
+				'product_id' => $product_id,
+				'new_stock'  => 0,
+				'delisted'   => false,
+				'error'      => 'Stock update failed',
+			);
+		}
+		$new_stock = (int) $new_stock;
+		if ( $new_stock < 0 ) {
+			wc_update_product_stock( $product, 0, 'set' );
+			$new_stock = 0;
+		}
 
+		// Reload so the save below carries the new stock, not the value read before the decrement.
+		$product  = wc_get_product( $product_id ) ?: $product;
 		$delisted = false;
 		if ( $new_stock <= 0 ) {
 			$product->set_stock_status( 'outofstock' );
@@ -410,6 +432,11 @@ class Card_Vault_WC_Sync {
 					$errors[] = sprintf( 'Sale %s not applied: stock for product %d was busy. Resend this sale.', $sale_record_id, $product_id );
 					continue;
 				}
+				if ( ! empty( $delist_result['error'] ) ) {
+					// Stock was not changed and no marker was saved, so resending is safe.
+					$errors[] = sprintf( 'Sale %s not applied: %s. Resend this sale.', $sale_record_id, $delist_result['error'] );
+					continue;
+				}
 				if ( ! empty( $delist_result['delisted'] ) ) {
 					$delisted_products[] = $product_id;
 				}
@@ -420,7 +447,7 @@ class Card_Vault_WC_Sync {
 					$split_rate = self::get_item_split_rate( $product_id );
 					$sale_price = isset( $sale['salePrice'] ) ? floatval( $sale['salePrice'] ) : ( (float) get_post_meta( $product_id, self::META_ASKING_PRICE, true ) );
 
-					Card_Vault_Consignments::record_payout( array(
+					$payout_result = Card_Vault_Consignments::record_payout( array(
 						'sale_record_id'          => $sale_record_id,
 						'consignor_id'             => $consignor_id,
 						'wc_product_id'            => $product_id,
@@ -436,13 +463,17 @@ class Card_Vault_WC_Sync {
 						'sale_source'              => $sale['saleSource'] ?? 'pos',
 						'notes'                    => $sale['notes'] ?? 'Show floor offline transaction sync',
 					) );
+					if ( is_wp_error( $payout_result ) ) {
+						$errors[] = sprintf( 'Sale %s: payout not recorded (%s). Resend this sale.', $sale_record_id, $payout_result->get_error_message() );
+						continue;
+					}
 				}
 			} elseif ( ! empty( $sale['consignorId'] ) ) {
 				// Card was not in WC product table but consignor is tracked
 				$split_rate = ( isset( $sale['consignorSplitRate'] ) && is_numeric( $sale['consignorSplitRate'] ) && (float) $sale['consignorSplitRate'] > 0 ) ? (float) $sale['consignorSplitRate'] : null;
 				$sale_price = isset( $sale['salePrice'] ) ? floatval( $sale['salePrice'] ) : 0.00;
 
-				Card_Vault_Consignments::record_payout( array(
+				$payout_result = Card_Vault_Consignments::record_payout( array(
 					'sale_record_id'          => $sale_record_id,
 					'consignor_id'             => sanitize_text_field( $sale['consignorId'] ),
 					'inventory_item_id'        => $inventory_item_id,
@@ -457,6 +488,10 @@ class Card_Vault_WC_Sync {
 					'sale_source'              => $sale['saleSource'] ?? 'pos',
 					'notes'                    => $sale['notes'] ?? 'Show floor sale record',
 				) );
+				if ( is_wp_error( $payout_result ) ) {
+					$errors[] = sprintf( 'Sale %s: payout not recorded (%s). Resend this sale.', $sale_record_id, $payout_result->get_error_message() );
+					continue;
+				}
 			}
 
 			$synced_sales++;
@@ -504,12 +539,19 @@ class Card_Vault_WC_Sync {
 			// Idempotent sale record identifier for this line item. A line already in the
 			// ledger (credited, settled, voided or clawed back) is never credited again.
 			$sale_record_id = Card_Vault_Payout_Reversals::order_item_sale_record_id( $order_id, $item_id );
+			$remaining = Card_Vault_Payout_Reversals::remaining_for_item( $order, $item_id, $item );
 			if ( Card_Vault_Consignments::get_payout_by_sale_record_id( $sale_record_id ) ) {
+				// The order is completed again after a cancel or failure: bring a voided or
+				// clawed-back row back in line with what stands. Rows that are already
+				// current come back 'unchanged'.
+				$outcome = Card_Vault_Payout_Reversals::reconcile_payout( $sale_record_id, $remaining['amount'], $remaining['quantity'], 'order completed again' );
+				if ( 'restored' === $outcome ) {
+					$order->add_order_note( sprintf( 'Card Vault: consignor credit for %s restored because the order is completed again.', $item->get_name() ) );
+				}
 				continue;
 			}
 
 			// Credit only what is left of the line after refunds allocated to it.
-			$remaining   = Card_Vault_Payout_Reversals::remaining_for_item( $order, $item_id, $item );
 			$line_total  = $remaining['amount'];
 			if ( $line_total <= 0 ) {
 				continue;

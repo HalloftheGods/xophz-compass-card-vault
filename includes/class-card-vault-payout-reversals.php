@@ -24,8 +24,10 @@ if ( ! defined( 'WPINC' ) ) {
  *
  * What this does not do: it moves no money and recovers nothing; it only records what is
  * owed. A refund WooCommerce does not allocate to a line item (an amount-only partial refund)
- * is not attributed to any consigned item and changes no payout. A void row is not credited
- * again if the order is later completed again.
+ * is not attributed to any consigned item and changes no payout. When an order is completed
+ * again, a void row goes back to unpaid and a clawback row is recomputed from what stands
+ * (handle_order_completed calls reconcile_payout). Deleting a refund is not handled: a row
+ * reduced or voided by a refund that is later deleted is not restored.
  */
 class Card_Vault_Payout_Reversals {
 
@@ -179,13 +181,14 @@ class Card_Vault_Payout_Reversals {
 	 * - unpaid row, nothing left: status 'void', amounts kept for audit.
 	 * - unpaid row, part left: amounts recomputed at the row's own split rate.
 	 * - paid row: the paid row is left as is; a clawback row records what the consignor owes back.
-	 * - void or clawback row: left as is.
+	 * - void row, part of the sale standing: status 'unpaid' again with amounts recomputed at the row's own split rate.
+	 * - void row, nothing left, or a clawback row: left as is.
 	 *
 	 * @param string $sale_record_id Payout sale_record_id.
 	 * @param float  $remaining_amount Sale amount still standing.
 	 * @param int    $remaining_quantity Units still sold.
 	 * @param string $reason Why (stored in the row notes).
-	 * @return string 'missing' | 'unchanged' | 'reduced' | 'void' | 'clawback'
+	 * @return string 'missing' | 'unchanged' | 'reduced' | 'void' | 'clawback' | 'restored'
 	 */
 	public static function reconcile_payout( $sale_record_id, $remaining_amount, $remaining_quantity, $reason ) {
 		$row = Card_Vault_Consignments::get_payout_by_sale_record_id( $sale_record_id );
@@ -212,7 +215,42 @@ class Card_Vault_Payout_Reversals {
 			return self::record_clawback( $row, $remaining_amount, $remaining_quantity, $reason );
 		}
 
+		if ( 'void' === $row['payout_status'] && $remaining_amount > 0 ) {
+			return self::restore_void( $row, $remaining_amount, $remaining_quantity, $reason );
+		}
+
 		return 'unchanged';
+	}
+
+	/**
+	 * Bring a voided row back to unpaid when part of its sale stands again (the order was
+	 * completed again, or a refund no longer applies). The update only matches while the
+	 * row is still void.
+	 *
+	 * @param array  $row Voided payout row.
+	 * @param float  $remaining_amount Sale amount standing (above zero).
+	 * @param int    $remaining_quantity Units still sold.
+	 * @param string $reason Why.
+	 * @return string 'restored' | 'unchanged'
+	 */
+	private static function restore_void( $row, $remaining_amount, $remaining_quantity, $reason ) {
+		global $wpdb;
+		$table = Card_Vault_Consignments::get_payouts_table();
+
+		$payout  = round( $remaining_amount * ( (float) $row['consignor_split_rate'] / 100.0 ), 2 );
+		$profit  = round( $remaining_amount - $payout, 2 );
+		$updated = $wpdb->query( $wpdb->prepare(
+			"UPDATE {$table} SET payout_status = 'unpaid', quantity = %d, total_sale_amount = %f, consignor_payout_amount = %f, dealer_profit_amount = %f, notes = CONCAT_WS(%s, NULLIF(notes, ''), %s) WHERE id = %d AND payout_status = 'void'",
+			max( 1, $remaining_quantity ),
+			$remaining_amount,
+			$payout,
+			$profit,
+			"\n",
+			self::note( sprintf( 'Restored to unpaid at $%0.2f (consignor $%0.2f): %s.', $remaining_amount, $payout, $reason ) ),
+			(int) $row['id']
+		) );
+
+		return 1 === $updated ? 'restored' : 'unchanged';
 	}
 
 	/**

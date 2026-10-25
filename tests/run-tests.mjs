@@ -12,6 +12,7 @@ import './catalog-importer.test.mjs';
 import './hookshot-bridge.test.mjs';
 import './catalog-db.test.mjs';
 import './payout-reversals.test.mjs';
+import './wc-sync.test.mjs';
 import './price-history-prune.test.mjs';
 import './image-cache.test.mjs';
 import './collector-sync.test.mjs';
