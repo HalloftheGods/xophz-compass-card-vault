@@ -14,6 +14,7 @@ if ( ! defined( 'WPINC' ) ) {
 }
 
 define( 'XOPHZ_COMPASS_CARD_VAULT_VERSION', '26.10.12' );
+define( 'XOPHZ_COMPASS_CARD_VAULT_FILE', __FILE__ );
 define( 'XOPHZ_COMPASS_CARD_VAULT_PATH', plugin_dir_path( __FILE__ ) );
 define( 'XOPHZ_COMPASS_CARD_VAULT_URL', plugin_dir_url( __FILE__ ) );
 
@@ -205,6 +206,10 @@ class Card_Vault extends Xophz_Compass_Plugin_Base {
 // Activation and deactivation hooks
 register_activation_hook( __FILE__, array( 'Card_Vault_Activator', 'activate' ) );
 register_deactivation_hook( __FILE__, array( 'Card_Vault', 'deactivate' ) );
+
+// Schema upgrades for updates without reactivation, and subsites created after network activation.
+add_action( 'plugins_loaded', array( 'Card_Vault_Activator', 'maybe_upgrade' ), 5 );
+add_action( 'wp_initialize_site', array( 'Card_Vault_Activator', 'on_new_site' ), 20 );
 
 /**
  * Begins execution of the plugin.

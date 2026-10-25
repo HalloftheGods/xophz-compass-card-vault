@@ -12,14 +12,92 @@ if ( ! defined( 'WPINC' ) ) {
 
 class Card_Vault_Activator {
 
+	/** Bump when a table or role definition changes; install_schema() reruns on mismatch. */
+	const DB_VERSION = '2026.10.25';
+
+	const DB_VERSION_OPTION = 'card_vault_db_version';
+
 	/**
-	 * Run database migrations, create custom roles, and configure initial options.
+	 * Activation entry point. On network activation, runs for each existing subsite.
+	 * Subsites created later are covered by on_new_site() and maybe_upgrade().
+	 *
+	 * @param bool $network_wide True when activated network-wide.
 	 */
-	public static function activate() {
+	public static function activate( $network_wide = false ) {
+		if ( is_multisite() && $network_wide ) {
+			foreach ( get_sites( array( 'fields' => 'ids', 'number' => 0 ) ) as $blog_id ) {
+				switch_to_blog( (int) $blog_id );
+				self::activate_site();
+				restore_current_blog();
+			}
+			return;
+		}
+		self::activate_site();
+	}
+
+	/**
+	 * Create tables for a site created after network activation.
+	 *
+	 * @param WP_Site $new_site New site object.
+	 */
+	public static function on_new_site( $new_site ) {
+		if ( ! function_exists( 'is_plugin_active_for_network' ) ) {
+			require_once ABSPATH . 'wp-admin/includes/plugin.php';
+		}
+		if ( ! is_plugin_active_for_network( plugin_basename( XOPHZ_COMPASS_CARD_VAULT_FILE ) ) ) {
+			return;
+		}
+		switch_to_blog( (int) $new_site->blog_id );
+		self::activate_site();
+		restore_current_blog();
+	}
+
+	/**
+	 * Re-run the schema (dbDelta is idempotent) when the stored version differs.
+	 * Covers updates without reactivation and subsites not yet initialised.
+	 * Not guaranteed to run before the first request that needs a new table.
+	 */
+	public static function maybe_upgrade() {
+		if ( get_option( self::DB_VERSION_OPTION ) === self::DB_VERSION ) {
+			return;
+		}
+		self::install_schema();
+	}
+
+	/**
+	 * Full per-site activation: schema, roles, catalog, crawler, rewrites.
+	 */
+	private static function activate_site() {
+		self::install_schema();
+
+		// 8. Initialize Subsite-Isolated MySQL Card Catalog Storage & Schema
+		if ( class_exists( 'Card_Vault_Catalog_DB' ) ) {
+			Card_Vault_Catalog_DB::ensure_database();
+		}
+
+		// 9. Initialize catalog crawler & mathematical database builder
+		if ( class_exists( 'Card_Vault_Catalog_Crawler' ) ) {
+			Card_Vault_Catalog_Crawler::init_on_activation();
+		}
+
+		// 10. Flush rewrite rules for /card-vault endpoint
+		if ( class_exists( 'Card_Vault_Public' ) ) {
+			$public = new Card_Vault_Public();
+			$public->register_rewrites();
+		}
+		flush_rewrite_rules();
+	}
+
+	/**
+	 * Create or update custom tables and roles for the current site.
+	 */
+	public static function install_schema() {
 		global $wpdb;
 
 		$charset_collate = $wpdb->get_charset_collate();
-		require_once ABSPATH . 'wp-admin/includes/upgrade.php';
+		if ( ! function_exists( 'dbDelta' ) ) {
+			require_once ABSPATH . 'wp-admin/includes/upgrade.php';
+		}
 
 		// 1. Table: wp_xophz_vault_consignments
 		$table_consignments = $wpdb->prefix . 'xophz_vault_consignments';
@@ -191,22 +269,7 @@ class Card_Vault_Activator {
 		// 7. Register roles and custom capabilities
 		self::register_roles_and_capabilities();
 
-		// 8. Initialize Subsite-Isolated MySQL Card Catalog Storage & Schema
-		if ( class_exists( 'Card_Vault_Catalog_DB' ) ) {
-			Card_Vault_Catalog_DB::ensure_database();
-		}
-
-		// 9. Initialize catalog crawler & mathematical database builder
-		if ( class_exists( 'Card_Vault_Catalog_Crawler' ) ) {
-			Card_Vault_Catalog_Crawler::init_on_activation();
-		}
-
-		// 10. Flush rewrite rules for /card-vault endpoint
-		if ( class_exists( 'Card_Vault_Public' ) ) {
-			$public = new Card_Vault_Public();
-			$public->register_rewrites();
-		}
-		flush_rewrite_rules();
+		update_option( self::DB_VERSION_OPTION, self::DB_VERSION );
 	}
 
 	/**
