@@ -15,6 +15,9 @@ import './payout-reversals.test.mjs';
 import './price-history-prune.test.mjs';
 import './image-cache.test.mjs';
 import './collector-sync.test.mjs';
+import './show-bid-counter.test.mjs';
+import './showcase-top-bids.test.mjs';
+import './turnstile-token.test.mjs';
 
 const results = await harness.run();
 if (results.failed > 0) {

@@ -10,9 +10,7 @@ import assert from 'node:assert';
 const CONTAINER_PLUGIN_DIR = '/var/www/html/wp-content/plugins/xophz-compass-card-vault';
 
 const runCounter = (amount, updateReturn = '1') => runPhpJson(`
-  define('ABSPATH', '/var/www/html/');
-  class WP_Error { public $code; public function __construct( $c = '', $m = '', $d = '' ) { $this->code = $c; } }
-  function __( $s ) { return $s; }
+  define('ARRAY_A', 'ARRAY_A');
   class Stub_Wpdb {
     public $prefix = 'wp_';
     public $updates = array();
@@ -24,7 +22,7 @@ const runCounter = (amount, updateReturn = '1') => runPhpJson(`
   $GLOBALS['wpdb'] = new Stub_Wpdb();
   require_once '${CONTAINER_PLUGIN_DIR}/includes/class-card-vault-community.php';
   $r = Card_Vault_Community::action_show_bid( 1, 2, 'countered', ${amount} );
-  echo json_encode( array( 'error' => $r instanceof WP_Error ? $r->code : null, 'result' => $r, 'updates' => $GLOBALS['wpdb']->updates ) );
+  echo json_encode( array( 'error' => $r instanceof WP_Error ? $r->get_error_code() : null, 'result' => $r, 'updates' => $GLOBALS['wpdb']->updates ) );
 `);
 
 describe('Show bid counter amount', () => {

@@ -14,6 +14,9 @@ class Card_Vault_Community {
 
 	const SETTINGS_OPTION_KEY = 'xophz_vault_community_settings';
 
+	/** User meta holding the collector's bid transparency choice. Only 'ticker' makes offers public. */
+	const BID_TRANSPARENCY_META_KEY = 'cv_show_bid_transparency_mode';
+
 	/**
 	 * Key inside card_payload that holds the item fields the table has no column for.
 	 * It is removed before card_payload is returned as the card.
@@ -477,19 +480,23 @@ class Card_Vault_Community {
 			);
 		}
 
-		// Retrieve high bid ticker if enabled
-		$bids_table = $wpdb->prefix . 'xophz_vault_show_bids';
-		$top_bids = $wpdb->get_results(
-			$wpdb->prepare(
-				"SELECT bid_code, vendor_name, vendor_booth, offer_type, offer_cash_amount, bid_type, target_item_ids, created_at 
-				FROM $bids_table 
-				WHERE collector_user_id = %d AND status IN ('accepted', 'countered')
-				ORDER BY offer_cash_amount DESC 
-				LIMIT 10",
-				$user->ID
-			),
-			ARRAY_A
-		);
+		// Vendor offers are public only when the collector chose the 'ticker' mode, stored server-side
+		// in user meta. Absent or any other value means private, so the default exposes nothing.
+		$top_bids = array();
+		if ( 'ticker' === get_user_meta( $user->ID, self::BID_TRANSPARENCY_META_KEY, true ) ) {
+			$bids_table = $wpdb->prefix . 'xophz_vault_show_bids';
+			$top_bids   = $wpdb->get_results(
+				$wpdb->prepare(
+					"SELECT bid_code, vendor_name, vendor_booth, offer_type, offer_cash_amount, bid_type, target_item_ids, created_at
+					FROM $bids_table
+					WHERE collector_user_id = %d AND status IN ('accepted', 'countered')
+					ORDER BY offer_cash_amount DESC
+					LIMIT 10",
+					$user->ID
+				),
+				ARRAY_A
+			);
+		}
 
 		return array(
 			'collector' => array(

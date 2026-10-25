@@ -18,6 +18,7 @@ const STUB_WPDB_BASE = `
   if ( ! function_exists( 'sanitize_title' ) ) { function sanitize_title( $s ) { return strtolower( (string) $s ); } }
   if ( ! function_exists( 'sanitize_user' ) ) { function sanitize_user( $s ) { return (string) $s; } }
   if ( ! function_exists( 'get_user_by' ) ) { function get_user_by( $f, $v ) { return (object) array( 'ID' => 7, 'display_name' => 'Collector' ); } }
+  if ( ! function_exists( 'get_user_meta' ) ) { function get_user_meta( $id, $k, $single = false ) { return ''; } }
   class Stub_Wpdb {
     public $prefix = 'wp_';
     public $calls = array();
