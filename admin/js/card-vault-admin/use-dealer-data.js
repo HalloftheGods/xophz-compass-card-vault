@@ -15,7 +15,8 @@ const emptyMetrics = () => ({
   pendingLiability: 0,
   totalPaidOut: 0,
   dealerProfit: 0,
-  activeStock: 0
+  activeStock: 0,
+  clawbackDue: 0
 });
 
 const toMetrics = (d) => ({
@@ -25,7 +26,8 @@ const toMetrics = (d) => ({
   pendingLiability: d.total_pending_liability || 0,
   totalPaidOut: d.total_paid_out || 0,
   dealerProfit: d.total_dealer_profit || 0,
-  activeStock: d.active_inventory_count || 0
+  activeStock: d.active_inventory_count || 0,
+  clawbackDue: d.total_clawback_due || 0
 });
 
 const isRejected = (result) => result.status === "rejected";

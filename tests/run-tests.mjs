@@ -20,6 +20,7 @@ import './collector-sync.test.mjs';
 import './show-bid-counter.test.mjs';
 import './showcase-top-bids.test.mjs';
 import './turnstile-token.test.mjs';
+import './dealer-hq-clawback.test.mjs';
 
 const results = await harness.run();
 if (results.failed > 0) {

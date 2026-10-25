@@ -36,6 +36,21 @@ export const payoutLedgerTemplate = `
                 >
                   Settled
                 </x-btn>
+                <x-btn
+                  size="x-small"
+                  :variant="payoutFilter === 'clawback' ? 'flat' : 'text'"
+                  :color="payoutFilter === 'clawback' ? 'error' : 'default'"
+                  @click="payoutFilter = 'clawback'"
+                >
+                  Clawbacks
+                </x-btn>
+                <x-btn
+                  size="x-small"
+                  :variant="payoutFilter === 'void' ? 'flat' : 'text'"
+                  @click="payoutFilter = 'void'"
+                >
+                  Voided
+                </x-btn>
               </v-sheet>
             </v-sheet>
 
@@ -55,9 +70,9 @@ export const payoutLedgerTemplate = `
                   <td class="font-mono text-caption text-white">{{ p.sale_record_id || '#' + p.id }}</td>
                   <td class="font-weight-medium">{{ p.consignor_name || 'Consignor ' + p.consignor_id }}</td>
                   <td class="text-right font-weight-medium">\${{ Number(p.total_sale_amount).toFixed(2) }}</td>
-                  <td class="text-right font-weight-bold text-success">\${{ Number(p.consignor_payout_amount).toFixed(2) }}</td>
+                  <td class="text-right font-weight-bold" :class="formatPayout(p).amountClass">{{ formatPayout(p).amountText }}</td>
                   <td class="text-center">
-                    <x-chip size="x-small" :color="p.payout_status === 'paid' ? 'success' : 'warning'" variant="tonal">
+                    <x-chip size="x-small" :color="formatPayout(p).chipColor" variant="tonal">
                       {{ p.payout_status }}
                     </x-chip>
                   </td>
@@ -71,7 +86,7 @@ export const payoutLedgerTemplate = `
                     >
                       Settle Disbursal
                     </x-btn>
-                    <span v-else class="text-caption text-medium-emphasis">Settled</span>
+                    <span v-else class="text-caption text-medium-emphasis">{{ formatPayout(p).statusText }}</span>
                   </td>
                 </tr>
               </tbody>

@@ -1,5 +1,5 @@
 /**
- * Payouts ledger: status filter ("all", "unpaid", "paid") over the loaded payouts, and settlement.
+ * Payouts ledger: status filter ("all", "unpaid", "paid", "void", "clawback") over the loaded payouts, and settlement.
  * markPayoutSettled(id) posts to /payouts/settle and reloads Dealer HQ data through refresh() when the
  * response reports success; a request error or a success:false response shows a toast via notify.
  */
@@ -15,6 +15,19 @@ export const usePayoutLedger = (props, payouts, notify, refresh) => {
     if (showsAll) return payouts.value;
     return payouts.value.filter((p) => p.payout_status === payoutFilter.value);
   });
+
+  // What the dealer should read for a row: void rows owe nothing, clawback rows are money the
+  // consignor owes back (stored as a negative payout), everything else keeps the stored amount.
+  const formatPayout = (p) => {
+    const money = Math.abs(Number(p.consignor_payout_amount)).toFixed(2);
+    const views = {
+      void: { amountText: "Voided, nothing due", amountClass: "text-medium-emphasis", statusText: "Voided", chipColor: "default" },
+      clawback: { amountText: `Owed back $${money}`, amountClass: "text-warning", statusText: "Owed back by consignor", chipColor: "error" },
+      paid: { amountText: `$${money}`, amountClass: "text-success", statusText: "Settled", chipColor: "success" }
+    };
+    const unpaid = { amountText: `$${Number(p.consignor_payout_amount).toFixed(2)}`, amountClass: "text-success", statusText: "", chipColor: "warning" };
+    return views[p.payout_status] || unpaid;
+  };
 
   const hasPayouts = computed(() => payouts.value.length > 0);
 
@@ -47,5 +60,5 @@ export const usePayoutLedger = (props, payouts, notify, refresh) => {
     }
   };
 
-  return { payoutFilter, filteredPayouts, hasPayouts, markPayoutSettled };
+  return { payoutFilter, filteredPayouts, formatPayout, hasPayouts, markPayoutSettled };
 };
