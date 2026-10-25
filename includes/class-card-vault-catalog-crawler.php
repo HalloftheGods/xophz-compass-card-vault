@@ -567,7 +567,7 @@ class Card_Vault_Catalog_Crawler {
 	 */
 	public static function handle_daily_crawler_cron(): void {
 		$state = self::get_raw_state();
-		$is_active = isset( $state['status'] ) && in_array( $state['status'], array( 'running', 'building_manifest' ), true );
+		$is_active = isset( $state['status'] ) && in_array( $state['status'], array( 'running', 'paused' ), true );
 
 		if ( ! $is_active ) {
 			self::start_crawler( array(
