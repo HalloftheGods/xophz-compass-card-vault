@@ -167,6 +167,9 @@ class Card_Vault_Consignments {
 		$email              = isset( $data['email'] ) ? sanitize_email( $data['email'] ) : '';
 		$phone              = isset( $data['phone'] ) ? sanitize_text_field( $data['phone'] ) : '';
 		$default_split_rate = isset( $data['default_split_rate'] ) ? floatval( $data['default_split_rate'] ) : 85.00;
+		if ( $default_split_rate < 0 || $default_split_rate > 100 ) {
+			return new WP_Error( 'invalid_split_rate', __( 'Split rate must be between 0 and 100.', 'xophz-compass-card-vault' ) );
+		}
 		$payout_method      = isset( $data['payout_method'] ) ? sanitize_text_field( $data['payout_method'] ) : 'Cash';
 		$payout_handle      = isset( $data['payout_handle'] ) ? sanitize_text_field( $data['payout_handle'] ) : '';
 		$status             = isset( $data['status'] ) ? sanitize_text_field( $data['status'] ) : 'active';
@@ -233,7 +236,11 @@ class Card_Vault_Consignments {
 			$update_format[]           = '%d';
 		}
 		if ( isset( $data['default_split_rate'] ) ) {
-			$update_data['default_split_rate'] = floatval( $data['default_split_rate'] );
+			$new_rate = floatval( $data['default_split_rate'] );
+			if ( $new_rate < 0 || $new_rate > 100 ) {
+				return new WP_Error( 'invalid_split_rate', __( 'Split rate must be between 0 and 100.', 'xophz-compass-card-vault' ) );
+			}
+			$update_data['default_split_rate'] = $new_rate;
 			$update_format[]                   = '%f';
 		}
 		if ( isset( $data['payout_method'] ) ) {
@@ -306,10 +313,16 @@ class Card_Vault_Consignments {
 
 		$consignor_id = sanitize_text_field( $payout_data['consignor_id'] );
 		$consignor    = self::get_consignor( $consignor_id );
+		if ( ! $consignor ) {
+			return new WP_Error( 'unknown_consignor', __( 'Consignor does not exist.', 'xophz-compass-card-vault' ) );
+		}
 
 		$quantity            = isset( $payout_data['quantity'] ) ? max( 1, (int) $payout_data['quantity'] ) : 1;
 		$sale_price_per_unit = isset( $payout_data['sale_price_per_unit'] ) ? floatval( $payout_data['sale_price_per_unit'] ) : 0.00;
 		$total_sale_amount   = isset( $payout_data['total_sale_amount'] ) ? floatval( $payout_data['total_sale_amount'] ) : ( $sale_price_per_unit * $quantity );
+		if ( $total_sale_amount < 0 || $sale_price_per_unit < 0 ) {
+			return new WP_Error( 'invalid_sale_amount', __( 'Sale amounts cannot be negative.', 'xophz-compass-card-vault' ) );
+		}
 
 		// Split rate: a positive per-item rate from the caller wins. Callers omit the key
 		// (or pass null) when the item has no rate of its own, so the consignor's
@@ -322,6 +335,9 @@ class Card_Vault_Consignments {
 		} else {
 			$split_rate = 85.00;
 		}
+
+		// Round once so the stored decimal(5,2) rate matches the rate used here, then bound it.
+		$split_rate = max( 0.0, min( 100.0, round( $split_rate, 2 ) ) );
 
 		$consignor_payout_amount = round( $total_sale_amount * ( $split_rate / 100.0 ), 2 );
 		$dealer_profit_amount    = round( $total_sale_amount - $consignor_payout_amount, 2 );
