@@ -15,6 +15,18 @@ class Card_Vault_Community {
 	const SETTINGS_OPTION_KEY = 'xophz_vault_community_settings';
 
 	/**
+	 * Key inside card_payload that holds the item fields the table has no column for.
+	 * It is removed before card_payload is returned as the card.
+	 */
+	const ITEM_META_KEY = '_cardVaultItem';
+
+	/**
+	 * Optional item fields stored under ITEM_META_KEY and returned as item fields.
+	 * dateAdded and lastModified are stored there too and returned separately.
+	 */
+	const ITEM_META_FIELDS = array( 'consignorId', 'consignorName', 'consignorSplitRate', 'customValuation', 'certificationStatus', 'aiGradeReport' );
+
+	/**
 	 * Retrieve community settings with defaults.
 	 *
 	 * @return array
@@ -100,8 +112,8 @@ class Card_Vault_Community {
 
 		$formatted = array();
 		foreach ( $results as $row ) {
-			$card_data = ! empty( $row['card_payload'] ) ? json_decode( $row['card_payload'], true ) : null;
-			$formatted[] = array(
+			list( $card_data, $item_meta ) = self::split_card_payload( $row['card_payload'] );
+			$formatted_item = array(
 				'id'               => $row['item_id'],
 				'cardId'           => $row['card_id'],
 				'card'             => $card_data ? $card_data : array(
@@ -122,16 +134,103 @@ class Card_Vault_Community {
 				'marketPrice'      => (float) $row['market_price'],
 				'userNotes'        => $row['user_notes'],
 				'isPublicShowcase' => (bool) $row['is_public_showcase'],
-				'dateAdded'        => ! empty( $row['created_at'] ) ? gmdate( 'Y-m-d', strtotime( $row['created_at'] ) ) : gmdate( 'Y-m-d' ),
-				'lastModified'     => ! empty( $row['updated_at'] ) ? gmdate( 'Y-m-d', strtotime( $row['updated_at'] ) ) : gmdate( 'Y-m-d' ),
+				'dateAdded'        => self::stored_date_added( $item_meta, $row ),
+				// A row written before the client time was stored only has updated_at, which
+				// is the time of the last push, not of the last edit: report no lastModified.
+				'lastModified'     => isset( $item_meta['lastModified'] ) ? $item_meta['lastModified'] : '',
 			);
+			$formatted[] = array_merge( $formatted_item, self::item_meta_fields( $item_meta ) );
 		}
 
 		return $formatted;
 	}
 
 	/**
+	 * Split a stored card_payload into the card and the item fields kept under ITEM_META_KEY.
+	 *
+	 * @param string|null $payload_json Stored card_payload.
+	 * @return array Two entries: the card array (or null) and the item fields (or null for a row without them).
+	 */
+	private static function split_card_payload( $payload_json ) {
+		$decoded = ! empty( $payload_json ) ? json_decode( $payload_json, true ) : null;
+		if ( ! is_array( $decoded ) ) {
+			return array( null, null );
+		}
+		$item_meta = isset( $decoded[ self::ITEM_META_KEY ] ) && is_array( $decoded[ self::ITEM_META_KEY ] ) ? $decoded[ self::ITEM_META_KEY ] : null;
+		unset( $decoded[ self::ITEM_META_KEY ] );
+		return array( ! empty( $decoded ) ? $decoded : null, $item_meta );
+	}
+
+	/**
+	 * The client acquisition date when stored, else the row creation day.
+	 *
+	 * @param array|null $item_meta Stored item fields.
+	 * @param array      $row       Table row.
+	 * @return string
+	 */
+	private static function stored_date_added( $item_meta, $row ) {
+		if ( ! empty( $item_meta['dateAdded'] ) ) {
+			return $item_meta['dateAdded'];
+		}
+		return ! empty( $row['created_at'] ) ? gmdate( 'Y-m-d', strtotime( $row['created_at'] ) ) : gmdate( 'Y-m-d' );
+	}
+
+	/**
+	 * Item fields to return for a row. A row with stored item fields returns every
+	 * field, null when it is not set, so a field cleared on one device is cleared on
+	 * the others. A row without them returns none, so the local copy keeps its own.
+	 *
+	 * @param array|null $item_meta Stored item fields.
+	 * @return array
+	 */
+	private static function item_meta_fields( $item_meta ) {
+		if ( ! is_array( $item_meta ) ) {
+			return array();
+		}
+		$fields = array();
+		foreach ( self::ITEM_META_FIELDS as $field ) {
+			$fields[ $field ] = isset( $item_meta[ $field ] ) ? $item_meta[ $field ] : null;
+		}
+		return $fields;
+	}
+
+	/**
+	 * Validate the item fields a client sends that the table has no column for.
+	 *
+	 * @param array $item Client inventory item.
+	 * @return array Values for ITEM_META_KEY; a missing or invalid field is null.
+	 */
+	private static function sanitize_item_meta( $item ) {
+		$text = function ( $key ) use ( $item ) {
+			return isset( $item[ $key ] ) && is_scalar( $item[ $key ] ) && '' !== trim( (string) $item[ $key ] ) ? sanitize_text_field( (string) $item[ $key ] ) : null;
+		};
+		$date = function ( $key ) use ( $text ) {
+			$value = $text( $key );
+			return null !== $value && strlen( $value ) <= 40 && false !== strtotime( $value ) ? $value : null;
+		};
+		$split_rate = isset( $item['consignorSplitRate'] ) && is_numeric( $item['consignorSplitRate'] ) ? max( 0, min( 100, (float) $item['consignorSplitRate'] ) ) : null;
+		$valuation  = isset( $item['customValuation'] ) && is_numeric( $item['customValuation'] ) && (float) $item['customValuation'] > 0 ? (float) $item['customValuation'] : null;
+		$status     = isset( $item['certificationStatus'] ) && in_array( $item['certificationStatus'], array( 'raw', 'certified' ), true ) ? $item['certificationStatus'] : null;
+
+		return array(
+			'dateAdded'           => $date( 'dateAdded' ),
+			'lastModified'        => $date( 'lastModified' ),
+			'consignorId'         => $text( 'consignorId' ),
+			'consignorName'       => $text( 'consignorName' ),
+			'consignorSplitRate'  => $split_rate,
+			'customValuation'     => $valuation,
+			'certificationStatus' => $status,
+			'aiGradeReport'       => isset( $item['aiGradeReport'] ) && is_array( $item['aiGradeReport'] ) ? $item['aiGradeReport'] : null,
+		);
+	}
+
+	/**
 	 * Sync and upsert collector items from client state.
+	 *
+	 * A row that already exists is updated in place, so created_at survives a push;
+	 * a new id is inserted. The client dateAdded and lastModified, and the consignor,
+	 * grade and valuation fields, are stored under ITEM_META_KEY in card_payload.
+	 * Rows whose id is missing from the push are deleted, as before.
 	 *
 	 * @param int   $user_id WordPress User ID.
 	 * @param array $items   Array of inventory items.
@@ -150,8 +249,12 @@ class Card_Vault_Community {
 		);
 
 		$incoming_ids = array();
+		$stored_ids   = array_fill_keys( $existing_ids, true );
 
 		foreach ( $items as $item ) {
+			if ( ! is_array( $item ) ) {
+				continue;
+			}
 			$item_id = ! empty( $item['id'] ) ? sanitize_text_field( $item['id'] ) : wp_generate_uuid4();
 			$incoming_ids[] = $item_id;
 
@@ -170,35 +273,40 @@ class Card_Vault_Community {
 			$market_price = isset( $card['pricing']['rawMarketPrice'] ) ? (float) $card['pricing']['rawMarketPrice'] : 0.00;
 			$user_notes = ! empty( $item['userNotes'] ) ? sanitize_textarea_field( $item['userNotes'] ) : null;
 			$is_public = isset( $item['isPublicShowcase'] ) ? ( (bool) $item['isPublicShowcase'] ? 1 : 0 ) : 1;
-			$payload_json = ! empty( $card ) ? wp_json_encode( $card ) : null;
+			$payload = $card;
+			$payload[ self::ITEM_META_KEY ] = self::sanitize_item_meta( $item );
+			$payload_json = wp_json_encode( $payload );
 
-			$wpdb->replace(
-				$table,
-				array(
-					'wp_user_id'         => $user_id,
-					'item_id'            => $item_id,
-					'card_id'            => $card_id,
-					'card_name'          => $card_name,
-					'set_name'           => $set_name,
-					'card_number'        => $card_number,
-					'rarity'             => $rarity,
-					'condition_grade'    => $condition,
-					'quantity'           => $quantity,
-					'is_foil'            => $is_foil,
-					'acquired_price'     => $acquired_price,
-					'asking_price'       => $asking_price,
-					'market_price'       => $market_price,
-					'card_payload'       => $payload_json,
-					'user_notes'         => $user_notes,
-					'is_public_showcase' => $is_public,
-				),
-				array(
-					'%d', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%d', '%d',
-					$acquired_price !== null ? '%f' : null,
-					$asking_price !== null ? '%f' : null,
-					'%f', '%s', '%s', '%d',
-				)
+			$key = array(
+				'wp_user_id' => $user_id,
+				'item_id'    => $item_id,
 			);
+			$fields = array(
+				'card_id'            => $card_id,
+				'card_name'          => $card_name,
+				'set_name'           => $set_name,
+				'card_number'        => $card_number,
+				'rarity'             => $rarity,
+				'condition_grade'    => $condition,
+				'quantity'           => $quantity,
+				'is_foil'            => $is_foil,
+				'acquired_price'     => $acquired_price,
+				'asking_price'       => $asking_price,
+				'market_price'       => $market_price,
+				'card_payload'       => $payload_json,
+				'user_notes'         => $user_notes,
+				'is_public_showcase' => $is_public,
+			);
+			// wpdb writes a null value as NULL whatever its format.
+			$field_formats = array( '%s', '%s', '%s', '%s', '%s', '%s', '%d', '%d', '%f', '%f', '%f', '%s', '%s', '%d' );
+
+			// REPLACE deletes and reinserts the row, which resets created_at: update in place instead.
+			if ( isset( $stored_ids[ $item_id ] ) ) {
+				$wpdb->update( $table, $fields, $key, $field_formats, array( '%d', '%s' ) );
+			} else {
+				$wpdb->insert( $table, array_merge( $key, $fields ), array_merge( array( '%d', '%s' ), $field_formats ) );
+				$stored_ids[ $item_id ] = true;
+			}
 		}
 
 		// Clean up deleted items
@@ -280,7 +388,8 @@ class Card_Vault_Community {
 		$total_card_count = 0;
 
 		foreach ( $results as $row ) {
-			$card_data = ! empty( $row['card_payload'] ) ? json_decode( $row['card_payload'], true ) : null;
+			// The stored item fields (consignor, grade, valuation) are private: only the card is shown.
+			list( $card_data ) = self::split_card_payload( $row['card_payload'] );
 			$qty = (int) $row['quantity'];
 			$m_price = (float) $row['market_price'];
 
