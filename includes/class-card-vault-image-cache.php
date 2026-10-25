@@ -346,7 +346,11 @@ class Card_Vault_Image_Cache {
 		// Path A: Remote asset is ALREADY WebP (e.g. TCGdex). Save directly with zero transcoding overhead.
 		$is_already_webp = $real_mime === 'image/webp';
 		if ( $is_already_webp ) {
-			@file_put_contents( $target_webp_path, $raw_body );
+			$written = @file_put_contents( $target_webp_path, $raw_body );
+			if ( false === $written || strlen( $raw_body ) !== $written ) {
+				@unlink( $target_webp_path );
+				return '';
+			}
 			return self::get_file_url( $card_id, $group_id, 'webp', $is_thumbnail );
 		}
 
