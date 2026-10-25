@@ -1071,11 +1071,18 @@ class Card_Vault_Community {
 			return new WP_Error( 'invalid_action', __( 'Invalid bid action.', 'xophz-compass-card-vault' ), array( 'status' => 400 ) );
 		}
 
+		if ( 'countered' === $action && null !== $counter_amount ) {
+			$counter_amount = round( (float) $counter_amount, 2 );
+			if ( ! is_finite( $counter_amount ) || $counter_amount <= 0 ) {
+				return new WP_Error( 'invalid_counter_amount', __( 'Counter amount must be greater than zero.', 'xophz-compass-card-vault' ), array( 'status' => 400 ) );
+			}
+		}
+
 		$update_data = array( 'status' => $action );
 		$update_formats = array( '%s' );
 
 		if ( 'countered' === $action && $counter_amount !== null ) {
-			$update_data['counter_amount'] = (float) $counter_amount;
+			$update_data['counter_amount'] = $counter_amount;
 			$update_formats[] = '%f';
 		}
 
