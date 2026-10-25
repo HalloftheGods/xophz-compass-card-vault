@@ -400,7 +400,7 @@ class Card_Vault_Catalog_REST {
 	 * @param WP_REST_Request $request
 	 * @return WP_REST_Response
 	 */
-	public static function handle_search( WP_REST_Request $request ): WP_REST_Response {
+	public static function handle_search( WP_REST_Request $request ): WP_REST_Response|WP_Error {
 		$query    = (string) ( $request->get_param( 'q' ) ?: '' );
 		$category = (int) $request->get_param( 'category' );
 		$group    = (int) $request->get_param( 'group' );
@@ -408,6 +408,9 @@ class Card_Vault_Catalog_REST {
 		$rarity   = (string) $request->get_param( 'rarity' );
 		$page     = max( 1, (int) ( $request->get_param( 'page' ) ?: 1 ) );
 		$limit    = max( 1, min( 100, (int) ( $request->get_param( 'limit' ) ?: 24 ) ) );
+		if ( ( $page - 1 ) * $limit > 10000 ) {
+			return new WP_Error( 'page_too_deep', __( 'Page is beyond the browsable range; narrow the search instead.', 'xophz-compass-card-vault' ), array( 'status' => 400 ) );
+		}
 		$offset   = ( $page - 1 ) * $limit;
 
 		$filters = array();
@@ -735,7 +738,7 @@ class Card_Vault_Catalog_REST {
 	 * @return WP_REST_Response
 	 */
 	public static function handle_status( WP_REST_Request $request ): WP_REST_Response {
-		$should_check = (bool) $request->get_param( 'check' );
+		$should_check = (bool) $request->get_param( 'check' ) && true === self::check_admin_permission( $request );
 		if ( $should_check ) {
 			$check_result = Card_Vault_Catalog_Importer::check_for_updates();
 		} else {
@@ -827,7 +830,7 @@ class Card_Vault_Catalog_REST {
 	 * @return WP_REST_Response
 	 */
 	public static function handle_get_categories( WP_REST_Request $request ): WP_REST_Response {
-		$force = (bool) $request->get_param( 'force' );
+		$force = (bool) $request->get_param( 'force' ) && true === self::check_admin_permission( $request );
 		$categories = Card_Vault_Catalog_Crawler::get_available_categories( $force );
 
 		return rest_ensure_response( array(
