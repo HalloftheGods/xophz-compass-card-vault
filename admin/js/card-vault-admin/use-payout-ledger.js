@@ -34,9 +34,16 @@ export const usePayoutLedger = (props, payouts, notify, refresh) => {
         await refresh();
       } else {
         notify(res.message || "Payout was not settled.");
+        await refresh();
       }
     } catch (err) {
       notify(`Failed to settle payout record: ${err.message}`);
+      // The row may have changed since load (paid or voided): reload so the ledger shows its real status.
+      try {
+        await refresh();
+      } catch (refreshErr) {
+        notify(`Could not reload payouts: ${refreshErr.message}`);
+      }
     }
   };
 

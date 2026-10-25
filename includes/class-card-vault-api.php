@@ -828,9 +828,16 @@ class Card_Vault_API {
 
 		$success = Card_Vault_Consignments::mark_payout_paid( $payout_id, $payment_method, $payment_reference );
 
+		if ( ! $success ) {
+			return new WP_REST_Response( array(
+				'success' => false,
+				'message' => 'Payout could not be settled. It may no longer be unpaid (paid, voided or under clawback); the ledger was refreshed.',
+			), 400 );
+		}
+
 		return new WP_REST_Response( array(
-			'success' => $success,
-		), $success ? 200 : 400 );
+			'success' => true,
+		), 200 );
 	}
 
 	/**
