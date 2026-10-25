@@ -196,6 +196,8 @@ class Card_Vault extends Xophz_Compass_Plugin_Base {
 	 */
 	public static function deactivate(): void {
 		wp_clear_scheduled_hook( 'card_vault_catalog_check_cron' );
+		wp_clear_scheduled_hook( 'card_vault_catalog_daily_crawler_cron' );
+		wp_clear_scheduled_hook( 'card_vault_catalog_crawler_step' );
 		flush_rewrite_rules();
 	}
 }
