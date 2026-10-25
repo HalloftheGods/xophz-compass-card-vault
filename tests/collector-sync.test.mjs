@@ -194,6 +194,47 @@ describe('Collector sync and intake guards (audit r4)', () => {
     assert.deepStrictEqual(res, [409, 409, 'accepted']);
   });
 
+  it('accept_intake_batch refuses a batch that is not appraised and writes nothing', () => {
+    const res = runPhpJson(`
+      ${STUB_WPDB_FAKES}
+      $GLOBALS['wpdb']->query_result = 1;
+      $out = array();
+      foreach ( array( 'pending', 'rejected' ) as $s ) {
+        $GLOBALS['wpdb']->batch = array( 'id' => 3, 'status' => $s, 'consignor_id' => 'c', 'agreed_split_rate' => 80 );
+        $r = Card_Vault_Community::accept_intake_batch( 3 );
+        $out[] = is_wp_error( $r ) ? $r->get_error_data()['status'] : 'ok';
+      }
+      $out[] = count( $GLOBALS['wpdb']->calls );
+      echo json_encode( $out );
+    `);
+    assert.deepStrictEqual(res, [409, 409, 0]);
+  });
+
+  it('an oversized item payload is skipped: no write is made for it', () => {
+    const res = runPhpJson(`
+      ${STUB_WPDB}
+      $GLOBALS['wpdb']->existing_ids = array( 'item-1' );
+      $big = ${CLIENT_ITEM};
+      $big['card']['blob'] = str_repeat( 'x', Card_Vault_Community::MAX_ITEM_PAYLOAD_BYTES + 10 );
+      $ok = Card_Vault_Community::sync_collector_items( 7, array( $big ) );
+      echo json_encode( array( $ok, count( $GLOBALS['wpdb']->calls ) ) );
+    `);
+    assert.deepStrictEqual(res[1], 0);
+  });
+
+  it('a collection sync is refused when allow_community_vaults is saved off, but not when unset', () => {
+    const res = runPhpJson(`
+      ${STUB_WPDB_FAKES}
+      $item = ${CLIENT_ITEM};
+      $unset = Card_Vault_Community::sync_collector_items( 7, array( $item ) );
+      fake_update_option( Card_Vault_Community::SETTINGS_OPTION_KEY, array( 'allow_community_vaults' => false ) );
+      $before = count( $GLOBALS['wpdb']->calls );
+      $off = Card_Vault_Community::sync_collector_items( 7, array( $item ) );
+      echo json_encode( array( $unset, $off, count( $GLOBALS['wpdb']->calls ) - $before ) );
+    `);
+    assert.deepStrictEqual(res, [true, false, 0]);
+  });
+
   it('update_settings changes users_can_register only for a user who can manage_options', () => {
     const res = runPhpJson(`
       ${STUB_WPDB_FAKES}

@@ -264,6 +264,13 @@ class Card_Vault_Community {
 		if ( ! is_array( $items ) || count( $items ) > self::MAX_SYNC_ITEMS ) {
 			return false;
 		}
+		// Refuse only when an admin explicitly saved the setting as off, so the users_can_register
+		// default does not lock out existing collectors. Dealers are exempt, as for intake.
+		$saved_settings = get_option( self::SETTINGS_OPTION_KEY, array() );
+		if ( is_array( $saved_settings ) && array_key_exists( 'allow_community_vaults', $saved_settings ) && empty( $saved_settings['allow_community_vaults'] )
+			&& ! current_user_can( 'manage_woocommerce' ) && ! current_user_can( 'manage_card_vault' ) ) {
+			return false;
+		}
 
 		$existing_ids = $wpdb->get_col(
 			$wpdb->prepare( "SELECT item_id FROM $table WHERE wp_user_id = %d", $user_id )
@@ -814,12 +821,16 @@ class Card_Vault_Community {
 		if ( in_array( $batch['status'], array( 'accepted', 'accepting' ), true ) ) {
 			return new WP_Error( 'already_accepted', __( 'This batch has already been accepted.', 'xophz-compass-card-vault' ), array( 'status' => 409 ) );
 		}
+		if ( 'appraised' !== $batch['status'] ) {
+			return new WP_Error( 'not_appraised', __( 'Only an appraised batch can be accepted.', 'xophz-compass-card-vault' ), array( 'status' => 409 ) );
+		}
 
 		// Claim the batch in one statement so a concurrent accept cannot also sync its lines.
-		// A request that dies between the claim and the final update leaves the batch 'accepting'.
+		// A PHP exception during the sync restores 'appraised'; a fatal error or killed request is not
+		// covered and leaves the batch 'accepting' until someone resets it.
 		$claimed = $wpdb->query(
 			$wpdb->prepare(
-				"UPDATE $batches_table SET status = 'accepting' WHERE id = %d AND status NOT IN ('accepted', 'accepting')",
+				"UPDATE $batches_table SET status = 'accepting' WHERE id = %d AND status = 'appraised'",
 				$batch_id
 			)
 		);
@@ -827,15 +838,16 @@ class Card_Vault_Community {
 			return new WP_Error( 'already_accepted', __( 'This batch has already been accepted.', 'xophz-compass-card-vault' ), array( 'status' => 409 ) );
 		}
 
-		$line_items = $wpdb->get_results(
-			$wpdb->prepare( "SELECT * FROM $items_table WHERE batch_id = %d AND status != 'rejected'", $batch_id ),
-			ARRAY_A
-		);
+		try {
+			$line_items = $wpdb->get_results(
+				$wpdb->prepare( "SELECT * FROM $items_table WHERE batch_id = %d AND status != 'rejected'", $batch_id ),
+				ARRAY_A
+			);
 
-		$synced_products = array();
+			$synced_products = array();
 
-		// Convert to WooCommerce products if WooCommerce sync class is active
-		if ( class_exists( 'Card_Vault_WC_Sync' ) ) {
+			// Convert to WooCommerce products if WooCommerce sync class is active
+			if ( class_exists( 'Card_Vault_WC_Sync' ) ) {
 			foreach ( $line_items as $item ) {
 				$cond = ! empty( $item['appraised_condition'] ) ? $item['appraised_condition'] : $item['claimed_condition'];
 				$price = $item['appraised_value'] !== null && (float) $item['appraised_value'] > 0 ? (float) $item['appraised_value'] : (float) $item['claimed_value'];
@@ -868,6 +880,10 @@ class Card_Vault_Community {
 					$synced_products[] = $wc_product_id;
 				}
 			}
+			}
+		} catch ( \Throwable $e ) {
+			$wpdb->update( $batches_table, array( 'status' => 'appraised' ), array( 'id' => $batch_id ), array( '%s' ), array( '%d' ) );
+			return new WP_Error( 'accept_failed', __( 'The batch could not be accepted. It was returned to appraised.', 'xophz-compass-card-vault' ), array( 'status' => 500 ) );
 		}
 
 		$wpdb->update(
