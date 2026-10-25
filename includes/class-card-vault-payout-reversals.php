@@ -108,6 +108,12 @@ class Card_Vault_Payout_Reversals {
 			return;
 		}
 
+		// Cancelled, refunded and failed orders were already fully reversed by the status hooks.
+		// Re-reconciling would see an amount-only refund as 0 allocated and overwrite the clawback.
+		if ( $order->has_status( array( 'cancelled', 'refunded', 'failed' ) ) ) {
+			return;
+		}
+
 		$changed = 0;
 		foreach ( $order->get_items() as $item_id => $item ) {
 			$remaining = self::remaining_for_item( $order, $item_id, $item );
