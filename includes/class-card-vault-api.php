@@ -858,10 +858,13 @@ class Card_Vault_API {
 		$params = $request->get_json_params();
 		$items = isset( $params['items'] ) && is_array( $params['items'] ) ? $params['items'] : array();
 
-		$success = Card_Vault_Community::sync_collector_items( $user_id, $items );
+		// Only an explicit replaceAll: true lets an empty push clear a non-empty collection.
+		$replace_all = isset( $params['replaceAll'] ) && true === $params['replaceAll'];
+		$success     = Card_Vault_Community::sync_collector_items( $user_id, $items, $replace_all );
 
 		return new WP_REST_Response( array(
 			'success' => $success,
+			'error'   => $success ? null : 'Collection not synced: the push was empty over a saved collection without replaceAll, or it had too many items.',
 			'meta'    => array(
 				'timestamp' => time(),
 				'count'     => count( $items ),

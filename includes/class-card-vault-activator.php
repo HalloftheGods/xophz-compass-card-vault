@@ -100,7 +100,7 @@ class Card_Vault_Activator {
 			market_price decimal(10,2) DEFAULT 0.00,
 			card_payload longtext DEFAULT NULL,
 			user_notes text DEFAULT NULL,
-			is_public_showcase tinyint(1) NOT NULL DEFAULT 1,
+			is_public_showcase tinyint(1) NOT NULL DEFAULT 0,
 			created_at datetime DEFAULT CURRENT_TIMESTAMP,
 			updated_at datetime DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
 			PRIMARY KEY  (id),

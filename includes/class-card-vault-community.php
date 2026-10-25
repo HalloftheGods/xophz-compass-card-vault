@@ -24,6 +24,18 @@ class Card_Vault_Community {
 	 * Optional item fields stored under ITEM_META_KEY and returned as item fields.
 	 * dateAdded and lastModified are stored there too and returned separately.
 	 */
+	/** Largest collection a single sync request may carry. */
+	const MAX_SYNC_ITEMS = 5000;
+
+	/** Largest stored card_payload for one synced item, in bytes. */
+	const MAX_ITEM_PAYLOAD_BYTES = 200000;
+
+	/** Largest number of lines in one intake batch. */
+	const MAX_INTAKE_LINES = 500;
+
+	/** Intake batches one user may submit per hour. */
+	const MAX_INTAKE_BATCHES_PER_HOUR = 20;
+
 	const ITEM_META_FIELDS = array( 'consignorId', 'consignorName', 'consignorSplitRate', 'customValuation', 'certificationStatus', 'aiGradeReport' );
 
 	/**
@@ -61,7 +73,10 @@ class Card_Vault_Community {
 		if ( isset( $new_settings['allow_community_vaults'] ) ) {
 			$allowed = (bool) $new_settings['allow_community_vaults'];
 			$current['allow_community_vaults'] = $allowed;
-			update_option( 'users_can_register', $allowed ? 1 : 0 );
+			// Core lets only manage_options change this option: a shop manager changes the plugin flag only.
+			if ( current_user_can( 'manage_options' ) ) {
+				update_option( 'users_can_register', $allowed ? 1 : 0 );
+			}
 		}
 
 		if ( isset( $new_settings['default_consignor_split'] ) ) {
@@ -230,23 +245,33 @@ class Card_Vault_Community {
 	 * A row that already exists is updated in place, so created_at survives a push;
 	 * a new id is inserted. The client dateAdded and lastModified, and the consignor,
 	 * grade and valuation fields, are stored under ITEM_META_KEY in card_payload.
-	 * Rows whose id is missing from the push are deleted, as before.
+	 * Rows whose id is missing from the push are deleted, as before, except that an
+	 * empty push over a non-empty collection is refused unless $replace_all is true.
+	 * A push of more than MAX_SYNC_ITEMS items is refused. An item whose stored payload
+	 * would exceed MAX_ITEM_PAYLOAD_BYTES is skipped and its existing row is kept.
+	 * A new row is private unless the item sets isPublicShowcase; a known row keeps its
+	 * flag unless the item sets it.
 	 *
-	 * @param int   $user_id WordPress User ID.
-	 * @param array $items   Array of inventory items.
-	 * @return bool
+	 * @param int   $user_id     WordPress User ID.
+	 * @param array $items       Array of inventory items.
+	 * @param bool  $replace_all True when the client explicitly means to replace the whole collection.
+	 * @return bool False when nothing was written because the push was refused.
 	 */
-	public static function sync_collector_items( $user_id, $items ) {
+	public static function sync_collector_items( $user_id, $items, $replace_all = false ) {
 		global $wpdb;
 		$table = $wpdb->prefix . 'xophz_vault_collector_items';
 
-		if ( ! is_array( $items ) ) {
+		if ( ! is_array( $items ) || count( $items ) > self::MAX_SYNC_ITEMS ) {
 			return false;
 		}
 
 		$existing_ids = $wpdb->get_col(
 			$wpdb->prepare( "SELECT item_id FROM $table WHERE wp_user_id = %d", $user_id )
 		);
+
+		if ( empty( $items ) && ! empty( $existing_ids ) && true !== $replace_all ) {
+			return false;
+		}
 
 		$incoming_ids = array();
 		$stored_ids   = array_fill_keys( $existing_ids, true );
@@ -272,10 +297,12 @@ class Card_Vault_Community {
 			$asking_price = isset( $item['askingPrice'] ) && is_numeric( $item['askingPrice'] ) ? (float) $item['askingPrice'] : null;
 			$market_price = isset( $card['pricing']['rawMarketPrice'] ) ? (float) $card['pricing']['rawMarketPrice'] : 0.00;
 			$user_notes = ! empty( $item['userNotes'] ) ? sanitize_textarea_field( $item['userNotes'] ) : null;
-			$is_public = isset( $item['isPublicShowcase'] ) ? ( (bool) $item['isPublicShowcase'] ? 1 : 0 ) : 1;
 			$payload = $card;
 			$payload[ self::ITEM_META_KEY ] = self::sanitize_item_meta( $item );
 			$payload_json = wp_json_encode( $payload );
+			if ( ! is_string( $payload_json ) || strlen( $payload_json ) > self::MAX_ITEM_PAYLOAD_BYTES ) {
+				continue;
+			}
 
 			$key = array(
 				'wp_user_id' => $user_id,
@@ -295,10 +322,17 @@ class Card_Vault_Community {
 				'market_price'       => $market_price,
 				'card_payload'       => $payload_json,
 				'user_notes'         => $user_notes,
-				'is_public_showcase' => $is_public,
 			);
+			$field_formats = array( '%s', '%s', '%s', '%s', '%s', '%s', '%d', '%d', '%f', '%f', '%f', '%s', '%s' );
+			// Private unless the client says otherwise; a known row keeps its flag when the item does not set one.
+			if ( isset( $item['isPublicShowcase'] ) ) {
+				$fields['is_public_showcase'] = $item['isPublicShowcase'] ? 1 : 0;
+				$field_formats[]              = '%d';
+			} elseif ( ! isset( $stored_ids[ $item_id ] ) ) {
+				$fields['is_public_showcase'] = 0;
+				$field_formats[]              = '%d';
+			}
 			// wpdb writes a null value as NULL whatever its format.
-			$field_formats = array( '%s', '%s', '%s', '%s', '%s', '%s', '%d', '%d', '%f', '%f', '%f', '%s', '%s', '%d' );
 
 			// REPLACE deletes and reinserts the row, which resets created_at: update in place instead.
 			if ( isset( $stored_ids[ $item_id ] ) ) {
@@ -321,6 +355,23 @@ class Card_Vault_Community {
 		}
 
 		return true;
+	}
+
+	/**
+	 * Whether the admin allows public QR showcases and guest bids (default on).
+	 *
+	 * @return bool
+	 */
+	private static function public_showcases_enabled() {
+		$settings = self::get_settings();
+		return ! empty( $settings['enable_public_showcases'] );
+	}
+
+	/**
+	 * @return WP_Error
+	 */
+	private static function showcases_disabled_error() {
+		return new WP_Error( 'showcases_disabled', __( 'Public showcases are turned off.', 'xophz-compass-card-vault' ), array( 'status' => 403 ) );
 	}
 
 	/**
@@ -368,6 +419,10 @@ class Card_Vault_Community {
 	public static function get_public_showcase( $slug ) {
 		global $wpdb;
 		$table = $wpdb->prefix . 'xophz_vault_collector_items';
+
+		if ( ! self::public_showcases_enabled() ) {
+			return self::showcases_disabled_error();
+		}
 
 		$user = self::resolve_showcase_user( $slug );
 
@@ -459,8 +514,24 @@ class Card_Vault_Community {
 		if ( empty( $items ) ) {
 			return new WP_Error( 'empty_batch', __( 'No cards provided in consignment batch.', 'xophz-compass-card-vault' ), array( 'status' => 400 ) );
 		}
+		if ( count( $items ) > self::MAX_INTAKE_LINES ) {
+			return new WP_Error( 'batch_too_large', __( 'Too many cards in one consignment batch.', 'xophz-compass-card-vault' ), array( 'status' => 400 ) );
+		}
 
 		$settings = self::get_settings();
+		// Dealers file batches on a collector's behalf whatever the community setting says.
+		if ( empty( $settings['allow_community_vaults'] ) && ! current_user_can( 'manage_woocommerce' ) && ! current_user_can( 'manage_card_vault' ) ) {
+			return new WP_Error( 'community_vaults_disabled', __( 'Consignment submissions are turned off.', 'xophz-compass-card-vault' ), array( 'status' => 403 ) );
+		}
+
+		// Best-effort throttle per user (a transient, so it is not exact under concurrent requests).
+		$throttle_key = 'cv_intake_' . (int) $user_id;
+		$submitted    = (int) get_transient( $throttle_key );
+		if ( $submitted >= self::MAX_INTAKE_BATCHES_PER_HOUR ) {
+			return new WP_Error( 'intake_rate_limited', __( 'Too many consignment batches submitted. Please try again later.', 'xophz-compass-card-vault' ), array( 'status' => 429 ) );
+		}
+		set_transient( $throttle_key, $submitted + 1, 3600 );
+
 		// The collector does not set the split: only the dealer-configured default applies.
 		$split_rate = max( 1.0, min( 99.0, (float) $settings['default_consignor_split'] ) );
 		$payout_pref = isset( $payload['payoutPreference'] ) ? sanitize_text_field( $payload['payoutPreference'] ) : 'consignment';
@@ -740,6 +811,21 @@ class Card_Vault_Community {
 		if ( ! $batch ) {
 			return new WP_Error( 'not_found', __( 'Batch not found.', 'xophz-compass-card-vault' ), array( 'status' => 404 ) );
 		}
+		if ( in_array( $batch['status'], array( 'accepted', 'accepting' ), true ) ) {
+			return new WP_Error( 'already_accepted', __( 'This batch has already been accepted.', 'xophz-compass-card-vault' ), array( 'status' => 409 ) );
+		}
+
+		// Claim the batch in one statement so a concurrent accept cannot also sync its lines.
+		// A request that dies between the claim and the final update leaves the batch 'accepting'.
+		$claimed = $wpdb->query(
+			$wpdb->prepare(
+				"UPDATE $batches_table SET status = 'accepting' WHERE id = %d AND status NOT IN ('accepted', 'accepting')",
+				$batch_id
+			)
+		);
+		if ( 1 !== (int) $claimed ) {
+			return new WP_Error( 'already_accepted', __( 'This batch has already been accepted.', 'xophz-compass-card-vault' ), array( 'status' => 409 ) );
+		}
 
 		$line_items = $wpdb->get_results(
 			$wpdb->prepare( "SELECT * FROM $items_table WHERE batch_id = %d AND status != 'rejected'", $batch_id ),
@@ -808,6 +894,10 @@ class Card_Vault_Community {
 	public static function submit_show_bid( $payload ) {
 		global $wpdb;
 		$table = $wpdb->prefix . 'xophz_vault_show_bids';
+
+		if ( ! self::public_showcases_enabled() ) {
+			return self::showcases_disabled_error();
+		}
 
 		$showcase_slug = ! empty( $payload['showcaseSlug'] ) ? sanitize_title( $payload['showcaseSlug'] ) : '';
 		$vendor_name = ! empty( $payload['vendorName'] ) ? sanitize_text_field( $payload['vendorName'] ) : '';
