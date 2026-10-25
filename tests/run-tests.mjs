@@ -8,6 +8,7 @@ import { harness } from '../../xophz-compass/tests/harness/test-framework.mjs';
 import './card-vault.test.mjs';
 import './catalog-cli.test.mjs';
 import './catalog-importer.test.mjs';
+import './hookshot-bridge.test.mjs';
 import './catalog-db.test.mjs';
 import './payout-reversals.test.mjs';
 

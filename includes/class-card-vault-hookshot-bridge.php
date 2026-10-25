@@ -24,6 +24,31 @@ class Card_Vault_Hookshot_Bridge {
 	const BRIDGE_ID = 'card_vault_catalog_sync';
 	const ACTION_JOB = 'card_vault_process_csv_sync_job';
 
+	// Hosts a PriceCharting CSV download_url may point at (https only), and the download size cap.
+	const PRICECHARTING_HOSTS = array( 'www.pricecharting.com', 'pricecharting.com' );
+	const CSV_MAX_DOWNLOAD_BYTES = 268435456; // 256 MB.
+
+	/**
+	 * Whether a PriceCharting CSV URL is https on an allowlisted host with no user info and
+	 * the default port. Only scheme, host, port and user info are checked, not the path.
+	 *
+	 * @param string $url Candidate URL.
+	 * @return bool
+	 */
+	public static function is_pricecharting_url( string $url ): bool {
+		$parts = parse_url( $url );
+		if ( ! is_array( $parts ) || strtolower( (string) ( $parts['scheme'] ?? '' ) ) !== 'https' ) {
+			return false;
+		}
+		if ( isset( $parts['user'] ) || isset( $parts['pass'] ) ) {
+			return false;
+		}
+		if ( isset( $parts['port'] ) && (int) $parts['port'] !== 443 ) {
+			return false;
+		}
+		return in_array( strtolower( (string) ( $parts['host'] ?? '' ) ), self::PRICECHARTING_HOSTS, true );
+	}
+
 	/**
 	 * Initialize Hookshot listeners and action hooks.
 	 */
@@ -115,18 +140,29 @@ class Card_Vault_Hookshot_Bridge {
 
 		// 1. PriceCharting CSV Ingestion
 		if ( $source === 'pricecharting' && ! empty( $download_url ) ) {
-			$temp_csv = wp_tempnam( 'pc_csv_' . time() );
-			if ( $temp_csv ) {
-				$resp = wp_remote_get( $download_url, array(
-					'timeout'  => 120,
-					'stream'   => true,
-					'filename' => $temp_csv,
-				) );
+			if ( ! self::is_pricecharting_url( $download_url ) ) {
+				$result['error'] = 'download_url refused: only https://' . self::PRICECHARTING_HOSTS[0] . '/ is allowed.';
+			} else {
+				$temp_csv = wp_tempnam( 'pc_csv_' . time() );
+				if ( $temp_csv ) {
+					// No redirects, private and loopback hosts rejected by wp_safe_remote_get(), size capped.
+					$resp = wp_safe_remote_get( $download_url, array(
+						'timeout'             => 120,
+						'stream'              => true,
+						'filename'            => $temp_csv,
+						'redirection'         => 0,
+						'limit_response_size' => self::CSV_MAX_DOWNLOAD_BYTES,
+					) );
 
-				if ( ! is_wp_error( $resp ) && wp_remote_retrieve_response_code( $resp ) === 200 ) {
-					$result = Card_Vault_Catalog_Importer::ingest_pricecharting_csv( $temp_csv );
+					clearstatcache( true, $temp_csv );
+					$capped = file_exists( $temp_csv ) && filesize( $temp_csv ) >= self::CSV_MAX_DOWNLOAD_BYTES;
+					if ( $capped ) {
+						$result['error'] = 'PriceCharting CSV exceeds the download size cap.';
+					} elseif ( ! is_wp_error( $resp ) && wp_remote_retrieve_response_code( $resp ) === 200 ) {
+						$result = Card_Vault_Catalog_Importer::ingest_pricecharting_csv( $temp_csv );
+					}
+					@unlink( $temp_csv );
 				}
-				@unlink( $temp_csv );
 			}
 		}
 		// 2. Specific Set CSV Ingestion from tcgcsv
