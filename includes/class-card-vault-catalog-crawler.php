@@ -483,6 +483,7 @@ class Card_Vault_Catalog_Crawler {
 			'group_id'         => $gid,
 			'group_name'       => $gname,
 			'imported_cards'   => $result['imported_count'] ?? 0,
+			'error'            => $is_success ? null : (string) ( $result['error'] ?? 'CSV ingestion failed' ),
 			'remaining_groups' => $state['remaining_groups'],
 			'next_run_in_sec'  => $has_more_items ? $delay_sec : 0,
 		);

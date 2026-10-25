@@ -415,7 +415,7 @@ class Card_Vault_Catalog_CLI {
 					$res['remaining_groups'] ?? 0
 				) );
 			} else {
-				WP_CLI::error( 'Step failed: ' . ( $res['message'] ?? 'Unknown error' ) );
+				WP_CLI::error( 'Step failed: ' . ( $res['error'] ?? $res['message'] ?? 'Unknown error' ) );
 			}
 			return;
 		}
@@ -429,7 +429,10 @@ class Card_Vault_Catalog_CLI {
 			$config['delay_seconds'] = (int) $assoc_args['delay-seconds'];
 		}
 		if ( isset( $assoc_args['categories'] ) ) {
-			$config['category_ids'] = array_filter( array_map( 'intval', explode( ',', (string) $assoc_args['categories'] ) ) );
+			$config['category_ids'] = array_values( array_filter( array_map( 'intval', explode( ',', (string) $assoc_args['categories'] ) ) ) );
+			if ( empty( $config['category_ids'] ) ) {
+				WP_CLI::error( 'No valid category IDs in --categories (expected comma-separated numbers).' );
+			}
 		}
 		$config['force'] = ! empty( $assoc_args['force'] );
 
@@ -472,7 +475,7 @@ class Card_Vault_Catalog_CLI {
 				if ( $step['success'] ) {
 					WP_CLI::log( sprintf( ' -> Ingested %d cards. %d sets remaining.', $step['imported_cards'], $step['remaining_groups'] ) );
 				} else {
-					WP_CLI::warning( ' -> Step encountered error: ' . ( $step['message'] ?? 'Check logs' ) );
+					WP_CLI::warning( ' -> Step encountered error: ' . ( $step['error'] ?? $step['message'] ?? 'Check logs' ) );
 				}
 
 				if ( isset( $step['remaining_groups'] ) && $step['remaining_groups'] <= 0 ) {
