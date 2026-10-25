@@ -751,7 +751,15 @@ class Card_Vault_Catalog_REST {
 			);
 		}
 
-		$status = Card_Vault_Catalog_DB::get_status();
+		$is_admin = true === self::check_admin_permission( $request );
+		$status   = $is_admin ? false : get_transient( 'card_vault_catalog_status_public' );
+		if ( ! is_array( $status ) ) {
+			$status = Card_Vault_Catalog_DB::get_status();
+			if ( ! $is_admin ) {
+				// Short cache so anonymous callers cannot force repeated full-table aggregates.
+				set_transient( 'card_vault_catalog_status_public', $status, 60 );
+			}
+		}
 		$status['hub_domain']           = Card_Vault_Catalog_Importer::HUB_DOMAIN;
 		$status['last_checked']         = get_option( 'card_vault_catalog_last_checked' ) ? date( 'Y-m-d H:i:s', (int) get_option( 'card_vault_catalog_last_checked' ) ) : null;
 		$status['last_synced']          = get_option( 'card_vault_catalog_last_synced' ) ? date( 'Y-m-d H:i:s', (int) get_option( 'card_vault_catalog_last_synced' ) ) : null;
