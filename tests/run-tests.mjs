@@ -11,6 +11,7 @@ import './catalog-importer.test.mjs';
 import './hookshot-bridge.test.mjs';
 import './catalog-db.test.mjs';
 import './payout-reversals.test.mjs';
+import './price-history-prune.test.mjs';
 
 const results = await harness.run();
 if (results.failed > 0) {

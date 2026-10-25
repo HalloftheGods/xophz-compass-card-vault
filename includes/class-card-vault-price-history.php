@@ -431,7 +431,8 @@ class Card_Vault_Price_History {
 
 	/**
 	 * Prune old daily records by compressing points older than $keep_daily_days to weekly points in MySQL.
-	 * Preserves Sundays (DAYOFWEEK = 1).
+	 * Keeps the latest row of each card in each week (YEARWEEK, Sunday-start), so a week
+	 * without a Sunday snapshot still keeps one point. Rows newer than the cutoff are untouched.
 	 *
 	 * Supports both ( $keep_daily_days ) and legacy ( $pdo, $keep_daily_days ).
 	 *
@@ -450,11 +451,20 @@ class Card_Vault_Price_History {
 		$table       = self::get_table_name();
 		$cutoff_date = gmdate( 'Y-m-d', strtotime( "-{$keep_daily_days} days" ) );
 
-		// Delete records older than cutoff that are NOT Sunday (DAYOFWEEK != 1 in MySQL)
+		// Delete records older than cutoff except the latest row per card and week.
 		$sql = $wpdb->prepare(
-			"DELETE FROM {$table}
-			 WHERE recorded_date < %s
-			 AND DAYOFWEEK(recorded_date) != 1",
+			"DELETE h FROM {$table} h
+			 LEFT JOIN (
+			   SELECT card_id, YEARWEEK(recorded_date, 0) AS wk, MAX(recorded_date) AS keep_date
+			   FROM {$table}
+			   WHERE recorded_date < %s
+			   GROUP BY card_id, YEARWEEK(recorded_date, 0)
+			 ) k ON k.card_id = h.card_id
+			   AND k.wk = YEARWEEK(h.recorded_date, 0)
+			   AND k.keep_date = h.recorded_date
+			 WHERE h.recorded_date < %s
+			 AND k.keep_date IS NULL",
+			$cutoff_date,
 			$cutoff_date
 		);
 
