@@ -29,7 +29,7 @@ class Card_Vault_Gemini {
 	 * @param string $model Model identifier.
 	 * @return array|WP_Error Parsed response or WP_Error.
 	 */
-	public static function generate_content( $parts, $system_instruction = '', $model = 'gemini-3.6-flash' ) {
+	public static function generate_content( $parts, $system_instruction = '', $model = '' ) {
 		if ( empty( $model ) || 'gemini-2.5-flash' === $model || 'gemini-2.5-pro' === $model ) {
 			$configured = get_option( 'card_vault_gemini_model', '' );
 			if ( ! empty( $configured ) ) {
