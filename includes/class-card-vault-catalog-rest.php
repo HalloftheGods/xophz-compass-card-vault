@@ -788,7 +788,8 @@ class Card_Vault_Catalog_REST {
 			$category_id = max( 1, (int) ( $request->get_param( 'category' ) ?: 3 ) );
 			$batch_size  = max( 1, min( 50, (int) ( $request->get_param( 'batch_size' ) ?: 10 ) ) );
 			$delay_ms    = max( 250, min( 5000, (int) ( $request->get_param( 'delay_ms' ) ?: 750 ) ) );
-			$limit       = $request->get_param( 'limit' ) ? (int) $request->get_param( 'limit' ) : null;
+			// Same 50-set ceiling as batch_size, so one request cannot run every remaining set.
+			$limit       = $request->get_param( 'limit' ) ? max( 1, min( 50, (int) $request->get_param( 'limit' ) ) ) : null;
 			$force       = (bool) $request->get_param( 'force' );
 
 			$result = Card_Vault_Catalog_Importer::batch_sync_groups( $category_id, $batch_size, $delay_ms, $limit, $force );

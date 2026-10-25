@@ -693,8 +693,9 @@ class Card_Vault_Catalog_Importer {
 		$idx_product = $cols['productname'] ?? ( $cols['name'] ?? null );
 		$idx_console = $cols['consolename'] ?? ( $cols['set'] ?? null );
 		$idx_loose   = $cols['looseprice'] ?? ( $cols['priceinpennies'] ?? ( $cols['ungradedprice'] ?? null ) );
-		$idx_psa10   = $cols['psa10price'] ?? ( $cols['gradedprice'] ?? ( $cols['gemmintprice'] ?? null ) );
-		$idx_psa9    = $cols['psa9price'] ?? ( $cols['mintprice'] ?? null );
+		// PriceCharting trading-card columns: graded-price is Grade 9, manual-only-price is PSA 10.
+		$idx_psa10   = $cols['psa10price'] ?? ( $cols['manualonlyprice'] ?? ( $cols['gemmintprice'] ?? null ) );
+		$idx_psa9    = $cols['psa9price'] ?? ( $cols['gradedprice'] ?? ( $cols['mintprice'] ?? null ) );
 
 		if ( $idx_product === null ) {
 			fclose( $handle );
@@ -739,9 +740,10 @@ class Card_Vault_Catalog_Importer {
 			$raw_psa10_val = ( $idx_psa10 !== null && isset( $row[ $idx_psa10 ] ) ) ? (float) preg_replace( '/[^\d.]/', '', (string) $row[ $idx_psa10 ] ) : 0.0;
 			$raw_psa9_val  = ( $idx_psa9 !== null && isset( $row[ $idx_psa9 ] ) ) ? (float) preg_replace( '/[^\d.]/', '', (string) $row[ $idx_psa9 ] ) : 0.0;
 
-			$psa10 = $raw_psa10_val > 500 && strpos( strtolower( $header[ $idx_psa10 ] ?? '' ), 'pennies' ) !== false ? $raw_psa10_val / 100 : $raw_psa10_val;
-			$psa9  = $raw_psa9_val > 500 && strpos( strtolower( $header[ $idx_psa9 ] ?? '' ), 'pennies' ) !== false ? $raw_psa9_val / 100 : $raw_psa9_val;
-			$loose = $raw_loose_val > 500 && strpos( strtolower( $header[ $idx_loose ] ?? '' ), 'pennies' ) !== false ? $raw_loose_val / 100 : $raw_loose_val;
+			$is_pennies = static fn( ?int $idx ): bool => $idx !== null && strpos( strtolower( (string) ( $header[ $idx ] ?? '' ) ), 'pennies' ) !== false;
+			$psa10 = $is_pennies( $idx_psa10 ) ? $raw_psa10_val / 100 : $raw_psa10_val;
+			$psa9  = $is_pennies( $idx_psa9 ) ? $raw_psa9_val / 100 : $raw_psa9_val;
+			$loose = $is_pennies( $idx_loose ) ? $raw_loose_val / 100 : $raw_loose_val;
 
 			if ( $psa10 <= 0 && $psa9 <= 0 ) {
 				continue;
