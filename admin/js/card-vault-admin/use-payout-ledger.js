@@ -20,11 +20,13 @@ export const usePayoutLedger = (props, payouts, notify, refresh) => {
 
   const markPayoutSettled = async (payoutId) => {
     try {
-      const res = await cardVaultRequest(props.context, "POST", "/payouts/settle", {
-        payout_id: payoutId,
-        payment_method: "Cash",
-        payment_reference: "Disbursed via Dealer HQ"
-      });
+      // Keep the method already recorded on the payout row; send none when the row has none
+      // (the server then applies its own default). No reference is invented here.
+      const row = payouts.value.find((p) => p.id === payoutId);
+      const method = row?.payment_method || row?.consignor_payout_method;
+      const body = { payout_id: payoutId };
+      if (method) body.payment_method = method;
+      const res = await cardVaultRequest(props.context, "POST", "/payouts/settle", body);
 
       const isSettled = res.success === true;
       if (isSettled) {

@@ -271,6 +271,16 @@ describe('Card Vault Submodule Tests', () => {
     });
   });
 
+  describe('Dealer HQ payout settlement', () => {
+    it('does not hardcode Cash or a fake reference when settling', () => {
+      const src = readSourceFile(PLUGIN_DIR + '/admin/js/card-vault-admin/use-payout-ledger.js');
+      assert.ok(src, 'use-payout-ledger.js must exist');
+      assert.ok(!src.includes('payment_method: "Cash"'), 'must not hardcode Cash');
+      assert.ok(!src.includes('Disbursed via Dealer HQ'), 'must not invent a payment reference');
+      assert.ok(src.includes('row?.payment_method'), 'must send the payout row method');
+    });
+  });
+
   describe('Number normalizer and SKU generator', () => {
     const prelude = `
       define('ABSPATH', '/var/www/html/');
