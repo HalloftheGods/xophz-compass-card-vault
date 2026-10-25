@@ -55,6 +55,17 @@ class Card_Vault_Stripe {
 	}
 
 	/**
+	 * Mark an unpaid POS order failed so it does not linger as pending. Best effort.
+	 *
+	 * @param mixed $order WC_Order or null.
+	 */
+	private static function fail_pos_order( $order ): void {
+		if ( $order && is_object( $order ) && method_exists( $order, 'update_status' ) ) {
+			$order->update_status( 'failed', 'Stripe checkout session could not be created.' );
+		}
+	}
+
+	/**
 	 * Create a WooCommerce POS order and generate a Stripe Checkout Session or QR link.
 	 *
 	 * Pricing is decided here, not by the client:
@@ -209,15 +220,21 @@ class Card_Vault_Stripe {
 			) );
 
 			if ( is_wp_error( $response ) ) {
+				self::fail_pos_order( $order );
 				return new WP_Error( 'stripe_http_error', $response->get_error_message(), array( 'status' => 500 ) );
 			}
 
 			$body = json_decode( wp_remote_retrieve_body( $response ), true );
 			if ( isset( $body['error'] ) ) {
-				return new WP_Error( 'stripe_api_error', $body['error']['message'], array( 'status' => 400 ) );
+				self::fail_pos_order( $order );
+				return new WP_Error( 'stripe_api_error', $body['error']['message'] ?? '', array( 'status' => 400 ) );
+			}
+			if ( ! is_array( $body ) || empty( $body['url'] ) ) {
+				self::fail_pos_order( $order );
+				return new WP_Error( 'stripe_api_error', __( 'Stripe did not return a checkout URL.', 'xophz-compass-card-vault' ), array( 'status' => 502 ) );
 			}
 
-			$checkout_url = $body['url'] ?? '';
+			$checkout_url = $body['url'];
 			$session_id   = $body['id'] ?? '';
 			$qr_url       = 'https://api.qrserver.com/v1/create-qr-code/?size=250&data=' . urlencode( $checkout_url );
 
