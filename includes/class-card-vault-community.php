@@ -1094,7 +1094,7 @@ class Card_Vault_Community {
 			array( '%d' )
 		);
 
-		return (bool) $updated;
+		return false !== $updated;
 	}
 
 	/**

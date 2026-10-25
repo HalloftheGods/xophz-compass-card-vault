@@ -1064,6 +1064,13 @@ class Card_Vault_API {
 			), $result->get_error_data()['status'] ?? 400 );
 		}
 
+		if ( false === $result ) {
+			return new WP_REST_Response( array(
+				'success' => false,
+				'error'   => 'Bid update failed.',
+			), 500 );
+		}
+
 		return new WP_REST_Response( array(
 			'success' => true,
 			'data'    => array( 'bidId' => $bid_id, 'action' => $action ),
@@ -1584,7 +1591,8 @@ class Card_Vault_API {
 		// Validate Turnstile captcha if active on the site
 		$turnstile_config = self::get_turnstile_config();
 		if ( $turnstile_config && ! empty( $turnstile_config['secret'] ) ) {
-			$turnstile_token = $params['turnstileToken'] ?? $params['cf-turnstile-response'] ?? $params['wpdef-turnstile-response'] ?? '';
+			$turnstile_raw   = $params['turnstileToken'] ?? $params['cf-turnstile-response'] ?? $params['wpdef-turnstile-response'] ?? '';
+			$turnstile_token = is_string( $turnstile_raw ) ? $turnstile_raw : '';
 			if ( empty( $turnstile_token ) || ! self::verify_turnstile_token( $turnstile_token, $turnstile_config['secret'] ) ) {
 				return new WP_REST_Response( array(
 					'success' => false,
@@ -1715,7 +1723,8 @@ class Card_Vault_API {
 		// Validate Turnstile captcha if active on the site
 		$turnstile_config = self::get_turnstile_config();
 		if ( $turnstile_config && ! empty( $turnstile_config['secret'] ) ) {
-			$turnstile_token = $params['turnstileToken'] ?? $params['cf-turnstile-response'] ?? $params['wpdef-turnstile-response'] ?? '';
+			$turnstile_raw   = $params['turnstileToken'] ?? $params['cf-turnstile-response'] ?? $params['wpdef-turnstile-response'] ?? '';
+			$turnstile_token = is_string( $turnstile_raw ) ? $turnstile_raw : '';
 			if ( empty( $turnstile_token ) || ! self::verify_turnstile_token( $turnstile_token, $turnstile_config['secret'] ) ) {
 				return new WP_REST_Response( array(
 					'success' => false,
