@@ -314,9 +314,9 @@ class Card_Vault_API {
 			$image_b64 = $parts[1];
 		}
 
-		$system_instruction = 'You are an expert Pokemon card authenticator and cataloger for My Card Vault. Inspect the provided card photo and extract: cardName, setName, cardNumber, rarity, finish (Holo, Reverse Holo, Non-Holo), estimatedCondition (NM, LP, MP, HP, DMG), confidence (number 0-1), and visualNotes. Output valid JSON matching this schema exactly.';
+		$system_instruction = 'You are an expert trading card and graded slab authenticator and cataloger for My Card Vault (supporting Pokemon, Magic: The Gathering, One Piece, Lorcana, Yu-Gi-Oh!, and Sports Cards). Inspect the provided card photo and extract: cardName, setName, cardNumber, rarity, finish (Holo, Reverse Holo, Foil, Non-Holo), estimatedCondition (NM, LP, MP, HP, DMG), confidence (number 0-1), and visualNotes. Output valid JSON matching this schema exactly.';
 
-		$prompt_text = 'Identify this Pokemon card.';
+		$prompt_text = 'Identify this trading card or graded slab.';
 		if ( ! empty( $text_hint ) ) {
 			$prompt_text .= sprintf( ' User text context/hint: %s.', $text_hint );
 		}

@@ -3,6 +3,11 @@
 All notable changes to this WordPress plugin submodule will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [2026-10-26]
+
+### Changed
+- **Multi-TCG & Sports Slab Vision Prompt (`includes/class-card-vault-api.php`, `public/dist/manifest.json`)**: Broadened `handle_scan_card` Gemini vision system instruction and prompt from Pokemon-only to support all major TCGs (Pokemon, Magic: The Gathering, One Piece, Lorcana, Yu-Gi-Oh!) and graded Sports Cards.
+
 ## [2026-10-10]
 
 ### Security

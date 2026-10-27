@@ -1,7 +1,7 @@
 {
-  "name": "My Card Vault: Pokemon TCG Show OS",
+  "name": "My Card Vault: TCG & Sports Card Show OS",
   "short_name": "Card Vault",
-  "description": "High-Speed TCG inventory, live market pricing, and show POS.",
+  "description": "High-Speed TCG and Sports Card inventory, live market pricing, and show POS.",
   "start_url": "./",
   "scope": "./",
   "id": "my-card-vault-pwa",
@@ -62,7 +62,7 @@
     {
       "name": "Scan Card",
       "short_name": "Scanner",
-      "description": "Scan Pokemon cards using camera",
+      "description": "Scan TCG and sports cards using camera",
       "url": "./#scanner",
       "icons": [
         {
