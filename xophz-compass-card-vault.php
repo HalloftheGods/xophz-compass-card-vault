@@ -3,7 +3,8 @@
  * Plugin Name:       Xophz Card Vault
  * Description:       Offline-first Trade Desk, POS, optical grading, consignment accounting & WooCommerce product sync for My Card Vault.
  * Version:           26.11.6-1340
- * Author:            Hall of the Gods, Inc.
+ * Author:            My Compass Consulting
+ * Author URI:        https://mycompassconsulting.com/
  * Category:          Command Deck
  * Group:             Ecosystem
  * Text Domain:       xophz-compass-card-vault
