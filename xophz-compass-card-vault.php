@@ -2,7 +2,7 @@
 /**
  * Plugin Name:       Xophz Card Vault
  * Description:       Offline-first Trade Desk, POS, optical grading, consignment accounting & WooCommerce product sync for My Card Vault.
- * Version:           26.11.6-1340
+ * Version:           26.11.18-275
  * Author:            My Compass Consulting
  * Author URI:        https://mycompassconsulting.com/
  * Category:          Command Deck
@@ -14,7 +14,7 @@ if ( ! defined( 'WPINC' ) ) {
 	die;
 }
 
-define( 'XOPHZ_COMPASS_CARD_VAULT_VERSION', '26.11.7' );
+define( 'XOPHZ_COMPASS_CARD_VAULT_VERSION', '26.11.18-275' );
 define( 'XOPHZ_COMPASS_CARD_VAULT_FILE', __FILE__ );
 define( 'XOPHZ_COMPASS_CARD_VAULT_PATH', plugin_dir_path( __FILE__ ) );
 define( 'XOPHZ_COMPASS_CARD_VAULT_URL', plugin_dir_url( __FILE__ ) );
